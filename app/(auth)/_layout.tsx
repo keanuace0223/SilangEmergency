@@ -1,5 +1,6 @@
 import CustomInputs from '@/components/CustomInputs';
 import { images } from '@/constants/images';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
@@ -8,12 +9,71 @@ import '../global.css';
 
 export default function AuthLayout() {
   const router = useRouter();
-  const [userId, setUserId] = useState('');
+  const [userID, setUserID] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleSignIn = async () => {
-    // We'll implement this next
-    console.log('Signing in with:', userId);
+    if (!userID || !password) {
+      alert('Please fill in all fields');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('Attempting to login with:', { userID });
+      console.log('Making request to server...');
+      const response = await fetch('http://192.168.18.57:4001/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ 
+          userID,
+          password 
+        }),
+      });
+
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log('Error response:', errorText);
+        try {
+          const errorJson = JSON.parse(errorText);
+          throw new Error(errorJson.error || 'Failed to sign in');
+        } catch {
+          throw new Error(errorText || 'Failed to sign in');
+        }
+      }
+
+      const data = await response.json();
+      console.log('Login successful:', data);
+      
+      // Store the token and user data
+      try {
+        await AsyncStorage.setItem('authToken', data.token);
+        await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+
+        // Verify token is persisted before navigating
+        const savedToken = await AsyncStorage.getItem('authToken');
+        if (!savedToken) {
+          throw new Error('Failed to persist auth token');
+        }
+
+        // Navigate to main tabs after successful login
+        router.replace('/(tabs)');
+      } catch (storageError) {
+        console.error('Error storing auth data:', storageError);
+        alert('Error storing authentication data');
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      alert(error.message || 'Network request failed. Please check your connection.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -42,8 +102,8 @@ export default function AuthLayout() {
               
               <CustomInputs 
                 placeholder="User ID"
-                value={userId}
-                onChangeText={setUserId}
+                value={userID}
+                onChangeText={setUserID}
                 label="User ID"
                 keyboardType="default"
               />
@@ -57,10 +117,13 @@ export default function AuthLayout() {
               />
 
               <TouchableOpacity
-                className="bg-blue-600 py-3 rounded-md mt-6"
+                className={`bg-blue-600 py-3 rounded-md mt-6 ${loading ? 'opacity-70' : ''}`}
                 onPress={handleSignIn}
+                disabled={loading}
               >
-                <Text className="text-white text-center font-semibold">Sign In</Text>
+                <Text className="text-white text-center font-semibold">
+                  {loading ? 'Signing in...' : 'Sign In'}
+                </Text>
               </TouchableOpacity>
 
               <Text className="flex-1 text-gray text-center font-semibold mt-20">Terms and Conditions</Text>

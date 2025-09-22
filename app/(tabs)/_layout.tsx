@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Redirect, Tabs } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Redirect, Tabs, useFocusEffect } from 'expo-router';
 import React from 'react';
 import '../global.css';
 
@@ -17,11 +18,51 @@ const TAB_BAR_SHADOW = {
 
 };
 
-const _layout = () => {
+const TabsLayout = () => {
+  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = React.useState(true);
+  
+  React.useEffect(() => {
+    // Check if user is authenticated
+    const checkAuth = async () => {
+      try {
+        const token = await AsyncStorage.getItem('authToken');
+        setIsAuthenticated(!!token);
+      } catch (error) {
+        console.error('Error checking auth:', error);
+        setIsAuthenticated(false);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+    
+    checkAuth();
+  }, []);
 
-  const isAuthenticated = false;
+  useFocusEffect(
+    React.useCallback(() => {
+      let isActive = true;
+      const recheck = async () => {
+        try {
+          const token = await AsyncStorage.getItem('authToken');
+          if (isActive) setIsAuthenticated(!!token);
+        } catch (error) {
+          console.error('Error re-checking auth on focus:', error);
+          if (isActive) setIsAuthenticated(false);
+        }
+      };
+      recheck();
+      return () => { isActive = false };
+    }, [])
+  );
 
-    if(!isAuthenticated) return <Redirect href ="/(auth)/sign-in"/>
+  if (isCheckingAuth) {
+    return null;
+  }
+
+  if (!isAuthenticated) {
+    return <Redirect href="/(auth)/sign-in" />;
+  }
 
   return (
 
@@ -111,4 +152,4 @@ const _layout = () => {
 
 }
 
-export default _layout
+export default TabsLayout;
