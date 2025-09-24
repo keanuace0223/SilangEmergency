@@ -65,10 +65,7 @@ const TabsLayout = () => {
   }
 
   return (
-
-  
-    
-    <Tabs 
+      <Tabs 
     screenOptions={{
         tabBarActiveTintColor: '#4A90E2',
         tabBarInactiveTintColor: '#8E8E93',
@@ -145,9 +142,7 @@ const TabsLayout = () => {
             }}
         />
 
-    </Tabs>
-
-    
+      </Tabs>
   )
 
 }
