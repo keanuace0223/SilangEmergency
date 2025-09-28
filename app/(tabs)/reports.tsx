@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import React from 'react'
-import { Alert, Animated, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Alert, Animated, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import LocationPicker from '../../components/LocationPicker'
 import { api } from '../../src/api/client'
 import { useUser } from '../../src/context/UserContext'
 
@@ -13,6 +14,8 @@ const Reports = () => {
   const [showImageViewer, setShowImageViewer] = React.useState(false)
   const [selectedImageIndex, setSelectedImageIndex] = React.useState(0)
   const [imageViewerImages, setImageViewerImages] = React.useState<string[]>([])
+  const [showLocationPicker, setShowLocationPicker] = React.useState(false)
+  const [selectedLocation, setSelectedLocation] = React.useState<{ latitude: number; longitude: number; address?: string } | null>(null)
   const [incidentType, setIncidentType] = React.useState<'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical' | ''>('')
   const [showIncidentMenu, setShowIncidentMenu] = React.useState(false)
   const [location, setLocation] = React.useState('')
@@ -113,6 +116,13 @@ const Reports = () => {
     setSelectedImageIndex(0)
   }
 
+  // Handle location selection
+  const handleLocationSelect = (location: { latitude: number; longitude: number; address?: string }) => {
+    setSelectedLocation(location)
+    setLocation(location.address || `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`)
+    setShowLocationPicker(false)
+  }
+
   // Filter reports based on active filter
   const getFilteredReports = () => {
     if (activeFilter === 'All') {
@@ -175,6 +185,7 @@ const Reports = () => {
     setDescription('')
     setMedia([])
     setIsSubmitting(false)
+    setSelectedLocation(null)
   }
 
   const handleClose = () => {
@@ -198,7 +209,7 @@ const Reports = () => {
       // Submit to API
       const reportData = {
         incidentType,
-        location,
+        location: selectedLocation ? `${selectedLocation.latitude},${selectedLocation.longitude}` : location,
         urgency,
         description,
         mediaUrls
@@ -247,18 +258,14 @@ const Reports = () => {
   // Format timestamp
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp)
-    const now = new Date()
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
-    
-    if (diffInHours < 1) {
-      const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
-      return `${diffInMinutes}m ago`
-    } else if (diffInHours < 24) {
-      return `${diffInHours}h ago`
-    } else {
-      const diffInDays = Math.floor(diffInHours / 24)
-      return `${diffInDays}d ago`
-    }
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
   }
 
   // Render report item
@@ -268,7 +275,7 @@ const Reports = () => {
       activeOpacity={0.8}
       className="mx-6"
     >
-      <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden" style={{
+      <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-lg" style={{
         shadowColor: '#000',
         shadowOffset: {
           width: 0,
@@ -283,7 +290,7 @@ const Reports = () => {
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center flex-1">
               {/* Incident Icon */}
-              <View className="w-12 h-12 rounded-xl bg-white items-center justify-center mr-4" style={{
+              <View className="w-12 h-12 rounded-xl bg-white items-center justify-center mr-4 shadow-sm" style={{
                 shadowColor: '#000',
                 shadowOffset: {
                   width: 0,
@@ -316,7 +323,7 @@ const Reports = () => {
             
             {/* Urgency Badge */}
             <View 
-              className="px-3 py-1.5 rounded-full"
+              className="px-3 py-1.5 rounded-full shadow-sm"
               style={{ 
                 backgroundColor: getUrgencyColor(item.urgency_tag),
                 shadowColor: '#000',
@@ -329,10 +336,7 @@ const Reports = () => {
                 elevation: 2,
               }}
             >
-              <Text 
-                className="text-xs font-bold tracking-wide"
-                style={{ color: '#FFFFFF' }}
-              >
+              <Text className="text-xs font-bold tracking-wide text-white">
                 {item.urgency_tag.toUpperCase()}
               </Text>
             </View>
@@ -391,36 +395,27 @@ const Reports = () => {
             const isActive = activeFilter === filter
             
             return (
-              <Pressable
+              <TouchableOpacity
                 key={filter}
                 onPress={() => handleFilterChange(filter)}
                 className={`flex-1 px-4 py-3 rounded-full border ${
                   isActive 
-                    ? 'border-transparent' 
-                    : 'border-gray-300'
+                    ? (filter === 'High' ? 'bg-red-500 border-red-500' : 
+                       filter === 'Medium' ? 'bg-yellow-500 border-yellow-500' : 
+                       filter === 'Low' ? 'bg-green-500 border-green-500' : 
+                       'bg-blue-500 border-blue-500')
+                    : 'bg-transparent border-gray-300'
                 }`}
-                style={({ pressed }) => ({
-                  opacity: pressed ? 0.9 : 1,
-                  transform: [{ scale: pressed ? 0.98 : 1 }],
-                  backgroundColor: isActive ? 
-                    (filter === 'High' ? '#EF4444' : 
-                     filter === 'Medium' ? '#F59E0B' : 
-                     filter === 'Low' ? '#10B981' : '#4A90E2') : 
-                    'transparent'
-                })}
+                activeOpacity={0.8}
               >
                 <Text 
-                  className="text-sm font-bold text-center"
-                  style={{
-                    color: isActive ? '#FFFFFF' : '#374151',
-                    textShadowColor: isActive ? 'rgba(0,0,0,0.3)' : 'transparent',
-                    textShadowOffset: { width: 0, height: 1 },
-                    textShadowRadius: 1
-                  }}
+                  className={`text-sm font-bold text-center ${
+                    isActive ? 'text-white' : 'text-gray-700'
+                  }`}
                 >
                   {filter}
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             )
           })}
         </View>
@@ -469,8 +464,8 @@ const Reports = () => {
               />
             }
             showsVerticalScrollIndicator={false}
-            style={{ flex: 1 }}
-            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+            className="flex-1"
+            ItemSeparatorComponent={() => <View className="h-3" />}
           />
         </View>
       )}
@@ -540,13 +535,15 @@ const Reports = () => {
               </View>
 
               <Text className="text-sm text-gray-600 mb-1">Location</Text>
-              <TextInput
-                placeholder="Enter location"
-                value={location}
-                onChangeText={setLocation}
-                className="border border-gray-300 rounded-xl px-3 py-3 text-base text-black mb-3"
-                placeholderTextColor="#8E8E93"
-              />
+              <TouchableOpacity
+                onPress={() => setShowLocationPicker(true)}
+                className="border border-gray-300 rounded-xl px-3 py-3 mb-3 flex-row items-center justify-between"
+              >
+                <Text className={`text-base ${location ? 'text-black' : 'text-gray-400'}`}>
+                  {location || 'Tap to select location on map'}
+                </Text>
+                <Ionicons name="location" size={20} color="#4A90E2" />
+              </TouchableOpacity>
 
               <Text className="text-sm text-gray-600 mb-1">Urgency</Text>
               <View className="flex-row gap-2 mb-3">
@@ -554,9 +551,18 @@ const Reports = () => {
                   <TouchableOpacity
                     key={level}
                     onPress={() => setUrgency(level)}
-                    className={`px-4 py-2 rounded-full border ${urgency === level ? 'bg-[#4A90E2] border-[#4A90E2]' : 'border-gray-300'} `}
+                    activeOpacity={urgency === level ? 1 : 0.7}
+                    className={`px-4 py-2 rounded-full border ${
+                      urgency === level 
+                        ? (level === 'High' ? 'bg-red-500 border-red-500' : 
+                           level === 'Moderate' ? 'bg-yellow-500 border-yellow-500' : 
+                           'bg-green-500 border-green-500')
+                        : 'bg-transparent border-gray-300'
+                    }`}
                   >
-                    <Text className={`${urgency === level ? 'text-white' : 'text-gray-700'} font-semibold`}>
+                    <Text className={`font-semibold ${
+                      urgency === level ? 'text-white' : 'text-gray-700'
+                    }`}>
                       {level}
                     </Text>
                   </TouchableOpacity>
@@ -755,14 +761,11 @@ const Reports = () => {
               }}
             >
               {imageViewerImages.map((imageUrl, index) => (
-                <View key={index} style={{ width: Dimensions.get('window').width, height: Dimensions.get('window').height }}>
+                <View key={index} className="w-full h-full" style={{ width: Dimensions.get('window').width, height: Dimensions.get('window').height }}>
                   <Image
                     source={{ uri: imageUrl }}
-                    style={{ 
-                      width: '100%', 
-                      height: '100%',
-                      resizeMode: 'contain'
-                    }}
+                    className="w-full h-full"
+                    style={{ resizeMode: 'contain' }}
                   />
                 </View>
               ))}
@@ -786,6 +789,14 @@ const Reports = () => {
           )}
         </View>
       </Modal>
+
+      {/* Location Picker Modal */}
+      <LocationPicker
+        visible={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onLocationSelect={handleLocationSelect}
+        initialLocation={selectedLocation || undefined}
+      />
       </View>
     </SafeAreaView>
   )
