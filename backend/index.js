@@ -27,6 +27,7 @@ app.use("/api/reports", reportsRoutes);
 
 
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`✅ Server also accessible at http://192.168.18.57:${PORT}`);
 });

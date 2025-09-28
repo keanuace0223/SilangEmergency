@@ -1,51 +1,63 @@
-const API_URL = 'http://localhost:4001/api';
+// For mobile device/emulator, use your computer's IP address instead of localhost
+const API_URL = 'http://192.168.18.57:4001/api';
 
-interface EmergencyReport {
-  id: string;
-  type: string;
-  description: string;
+interface Report {
+  id: number;
+  user_id?: number;
+  incident_type: string;
+  incident_datetime: string;
   location: string;
-  status: 'pending' | 'in-progress' | 'resolved';
-  reportedBy: string;
-  createdAt: string;
-  updatedAt: string;
+  urgency_tag: 'Low' | 'Moderate' | 'High';
+  uploaded_media: string[];
+  description: string;
+}
+
+interface CreateReportData {
+  incidentType: string;
+  location: string;
+  urgency: 'Low' | 'Moderate' | 'High';
+  description: string;
+  mediaUrls?: string[];
 }
 
 export const api = {
-  emergencyReports: {
-    getAll: async (): Promise<EmergencyReport[]> => {
-      const response = await fetch(`${API_URL}/emergency-reports`);
-      if (!response.ok) throw new Error('Failed to fetch emergency reports');
+  reports: {
+    getAll: async (userId: number = 1): Promise<Report[]> => {
+      const response = await fetch(`${API_URL}/reports?user_id=${userId}`);
+      if (!response.ok) throw new Error('Failed to fetch reports');
       return response.json();
     },
 
-    getById: async (id: string): Promise<EmergencyReport> => {
-      const response = await fetch(`${API_URL}/emergency-reports/${id}`);
-      if (!response.ok) throw new Error('Failed to fetch emergency report');
+    getById: async (id: number): Promise<Report> => {
+      const response = await fetch(`${API_URL}/reports/${id}`);
+      if (!response.ok) throw new Error('Failed to fetch report');
       return response.json();
     },
 
-    create: async (report: Omit<EmergencyReport, 'id' | 'createdAt' | 'updatedAt'>): Promise<EmergencyReport> => {
-      const response = await fetch(`${API_URL}/emergency-reports`, {
+    create: async (reportData: CreateReportData, userId: number = 1): Promise<Report> => {
+      const response = await fetch(`${API_URL}/reports`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(report),
+        body: JSON.stringify({ ...reportData, userId }),
       });
-      if (!response.ok) throw new Error('Failed to create emergency report');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create report');
+      }
       return response.json();
     },
 
-    update: async (id: string, updates: Partial<EmergencyReport>): Promise<EmergencyReport> => {
-      const response = await fetch(`${API_URL}/emergency-reports/${id}`, {
+    update: async (id: number, updates: Partial<Report>): Promise<Report> => {
+      const response = await fetch(`${API_URL}/reports/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(updates),
       });
-      if (!response.ok) throw new Error('Failed to update emergency report');
+      if (!response.ok) throw new Error('Failed to update report');
       return response.json();
     },
   },

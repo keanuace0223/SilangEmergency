@@ -1,36 +1,65 @@
 const express = require("express");
+const { Pool } = require("pg");
 const router = express.Router();
 
-// TODO: Wire these handlers to PostgreSQL when your schema is ready
+// Database connection pool
+const pool = new Pool({
+  user: "postgres",
+  host: "localhost",
+  database: "SilangEmergency",
+  password: "kenpogi0223",
+  port: 5432,
+});
 
 // GET /api/reports
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   try {
-    // Placeholder response
-    return res.json([]);
+    // Get user_id from query parameter (for now, we'll use a default user)
+    const userId = req.query.user_id || 1; // Default to user_id = 1 for now
+    
+    const result = await pool.query(
+      "SELECT * FROM reports WHERE user_id = $1 ORDER BY incident_datetime DESC",
+      [userId]
+    );
+    return res.json(result.rows);
   } catch (error) {
     console.error("GET /api/reports error:", error);
-    return res.status(500).json({ message: "Failed to fetch reports" });
+    return res.status(500).json({ 
+      message: "Failed to fetch reports", 
+      error: error.message 
+    });
   }
 });
 
 // POST /api/reports
 router.post("/", async (req, res) => {
   try {
-    const { title, description } = req.body || {};
-    if (!title || !description) {
-      return res.status(400).json({ message: "title and description are required" });
+    const { 
+      incidentType, 
+      location, 
+      urgency, 
+      description, 
+      mediaUrls = [],
+      userId = 1 // Default to user_id = 1 for now
+    } = req.body;
+
+    // Validate required fields
+    if (!incidentType || !location || !urgency || !description) {
+      return res.status(400).json({ 
+        message: "incidentType, location, urgency, and description are required" 
+      });
     }
 
-    // Placeholder created report
-    const created = {
-      id: Date.now(),
-      title,
-      description,
-      createdAt: new Date().toISOString(),
-    };
+    // Insert new report into database using your actual schema
+    const result = await pool.query(
+      `INSERT INTO reports (user_id, incident_type, location, urgency_tag, description, uploaded_media, incident_datetime) 
+       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP) 
+       RETURNING *`,
+      [userId, incidentType, location, urgency, description, mediaUrls]
+    );
 
-    return res.status(201).json(created);
+    const createdReport = result.rows[0];
+    return res.status(201).json(createdReport);
   } catch (error) {
     console.error("POST /api/reports error:", error);
     return res.status(500).json({ message: "Failed to create report" });
