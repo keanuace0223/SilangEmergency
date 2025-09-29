@@ -15,11 +15,15 @@ const CustomInputs = ({
 
   return  (
     <View className="w-full gap-2">
-        <Text className="text-gray-700 font-medium text-base" style={{
-
-          marginBottom: 5,
-          color: "#4A90E2",
-        }}>{label}</Text>
+        <Text 
+          className="font-medium text-base"
+          style={{
+            marginBottom: 5,
+            color: "#4A90E2",
+          }}
+        >
+          {label}
+        </Text>
 
         <TextInput 
           autoCapitalize="none"
@@ -30,7 +34,7 @@ const CustomInputs = ({
           keyboardType={keyboardType}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          placeholderTextColor="#666"
+          placeholderTextColor={'#666'}
           placeholder={placeholder}
           style={{
             borderWidth: 2,
@@ -39,6 +43,7 @@ const CustomInputs = ({
             paddingHorizontal: 16,
             paddingVertical: 12,
             borderRadius: 8,
+            color: '#111827',
           }}
           className="text-base"
         />

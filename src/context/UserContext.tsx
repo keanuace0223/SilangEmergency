@@ -1,16 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
 interface User {
   id: number;
   name: string;
   email: string;
+  barangay: string;
+  barangay_position: string;
 }
 
 interface UserContextType {
   user: User | null;
   login: (userData: User) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -20,24 +23,42 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadUser();
-  }, []);
-
-  const loadUser = async () => {
+  const loadUser = useCallback(async () => {
     try {
-      const userData = await AsyncStorage.getItem('user');
+      console.log('Loading user data...');
+      const userData = await AsyncStorage.getItem('userData');
+      console.log('UserData from storage:', userData);
+      
       if (userData) {
-        setUser(JSON.parse(userData));
+        const parsedUser = JSON.parse(userData);
+        console.log('Parsed user:', parsedUser);
+        // Map the user data to match our User interface
+        const mappedUser = {
+          id: parsedUser.id,
+          name: parsedUser.name,
+          email: parsedUser.userID, // userID is used as email in this system
+          barangay: parsedUser.barangay,
+          barangay_position: parsedUser.barangay_position
+        };
+        console.log('Mapped user:', mappedUser);
+        setUser(mappedUser);
+      } else {
+        console.log('No user data found in storage');
+        setUser(null);
       }
     } catch (error) {
       console.error('Error loading user:', error);
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const login = async (userData: User) => {
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
+
+  const login = useCallback(async (userData: User) => {
     try {
       await AsyncStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
@@ -45,19 +66,26 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error saving user:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await AsyncStorage.removeItem('user');
+      await AsyncStorage.removeItem('userData');
+      await AsyncStorage.removeItem('authToken');
       setUser(null);
     } catch (error) {
       console.error('Error logging out:', error);
     }
-  };
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    setIsLoading(true);
+    await loadUser();
+  }, [loadUser]);
 
   return (
-    <UserContext.Provider value={{ user, login, logout, isLoading }}>
+    <UserContext.Provider value={{ user, login, logout, refreshUser, isLoading }}>
       {children}
     </UserContext.Provider>
   );

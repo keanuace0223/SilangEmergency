@@ -50,6 +50,8 @@ router.post("/login", async (req, res) => {
         id: user.id,
         userID: user.userid,
         name: user.name,
+        barangay: user.barangay,
+        barangay_position: user.barangay_position,
       },
     });
   } catch (err) {

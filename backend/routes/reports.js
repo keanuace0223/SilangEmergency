@@ -31,6 +31,29 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET /api/reports/count/:userId
+router.get("/count/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const result = await pool.query(
+      "SELECT COUNT(*) as count FROM reports WHERE user_id = $1",
+      [userId]
+    );
+    
+    return res.json({ 
+      count: parseInt(result.rows[0].count),
+      userId: parseInt(userId)
+    });
+  } catch (error) {
+    console.error("GET /api/reports/count error:", error);
+    return res.status(500).json({ 
+      message: "Failed to fetch report count", 
+      error: error.message 
+    });
+  }
+});
+
 // POST /api/reports
 router.post("/", async (req, res) => {
   try {
