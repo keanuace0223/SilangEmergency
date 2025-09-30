@@ -3,21 +3,24 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Animated,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    Animated,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AppModal from '../../components/AppModal';
 import { images } from '../../constants/images';
+import { useUser } from '../../src/context/UserContext';
 import '../global.css';
 
 export default function SignInScreen() {
   const router = useRouter();
+  const { refreshUser } = useUser();
   const [userID, setUserID] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -108,6 +111,8 @@ export default function SignInScreen() {
       if (response.ok) {
         await AsyncStorage.setItem('authToken', data.token);
         await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+        // Ensure UserContext reloads the just-saved user
+        try { await refreshUser(); } catch {}
         setSuccessVisible(true);
       } else {
         const msg = data.error || data.message || 'Login failed. Please check your credentials.';
@@ -144,6 +149,7 @@ export default function SignInScreen() {
       className="flex-1"
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <SafeAreaView className="flex-1" edges={['top','bottom','left','right']}>
       {/* Full Screen Blue Background */}
       <View className="flex-1 bg-white">
         {/* Status Bar Spacer */}
@@ -254,6 +260,7 @@ export default function SignInScreen() {
 
       {/* Message/Error Modal */}
       <AppModal visible={messageVisible} onClose={() => setMessageVisible(false)} icon={messageIcon} iconColor={messageIconColor} title={messageTitle} message={messageText || errorMessage || 'Please try again.'} actions={[{ label: 'OK', onPress: () => setMessageVisible(false), variant: 'secondary' }]} />
+      </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }

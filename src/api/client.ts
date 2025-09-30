@@ -61,4 +61,15 @@ export const api = {
       return response.json();
     },
   },
+  users: {
+    update: async (id: number, updates: { name?: string; barangay_position?: string; profile_pic?: string | null }) => {
+      const response = await fetch(`${API_URL}/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!response.ok) throw new Error('Failed to update user');
+      return response.json();
+    }
+  }
 };

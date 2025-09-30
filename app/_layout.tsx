@@ -9,20 +9,45 @@ export default function RootLayout() {
 
   useEffect(() => {
     // Default nav bar background and icons
-    NavigationBar.setBackgroundColorAsync('#FFFFFF'); 
-    NavigationBar.setButtonStyleAsync('dark');
+    (async () => {
+      try {
+        await NavigationBar.setBackgroundColorAsync('#FFFFFF');
+        await NavigationBar.setButtonStyleAsync('dark');
+        // Ensure navbar is not overlaying content and insets the layout
+        await NavigationBar.setBehaviorAsync('inset-swipe');
+        await NavigationBar.setPositionAsync('relative');
+        // Force it visible with solid background
+        // @ts-ignore newer SDKs
+        if (NavigationBar.setVisibilityAsync) {
+          // @ts-ignore
+          await NavigationBar.setVisibilityAsync('visible');
+        }
+      } catch {}
+    })();
   }, []);
 
   useEffect(() => {
-    // Adapt nav bar per route (light theme only)
-    // Use white on main tabs and auth; darker where needed in the future
-    const lightBg = '#FFFFFF';
-    const darkBg = '#0B1220';
-    const isLight = true; // app uses light theme now
+    // Adapt Android navigation bar background to screen background
+    // Dashboard uses gray-50; others default to white
+    const DASHBOARD_BG = '#F9FAFB'; // tailwind gray-50
+    const DEFAULT_BG = '#FFFFFF';
 
-    const currentColor = isLight ? lightBg : darkBg;
-    NavigationBar.setBackgroundColorAsync(currentColor);
-    NavigationBar.setButtonStyleAsync(isLight ? 'dark' : 'light');
+    const isDashboard = pathname?.includes('/(tabs)/index') || pathname === '/(tabs)';
+    const navColor = isDashboard ? DASHBOARD_BG : DEFAULT_BG;
+
+    (async () => {
+      try {
+        await NavigationBar.setBackgroundColorAsync(navColor);
+        await NavigationBar.setButtonStyleAsync('dark');
+        await NavigationBar.setBehaviorAsync('inset-swipe');
+        await NavigationBar.setPositionAsync('relative');
+        // @ts-ignore newer SDKs
+        if (NavigationBar.setVisibilityAsync) {
+          // @ts-ignore
+          await NavigationBar.setVisibilityAsync('visible');
+        }
+      } catch {}
+    })();
   }, [pathname]);
 
   return (

@@ -7,6 +7,7 @@ interface User {
   email: string;
   barangay: string;
   barangay_position: string;
+  profile_pic?: string;
 }
 
 interface UserContextType {
@@ -33,12 +34,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const parsedUser = JSON.parse(userData);
         console.log('Parsed user:', parsedUser);
         // Map the user data to match our User interface
-        const mappedUser = {
+        const mappedUser: User = {
           id: parsedUser.id,
           name: parsedUser.name,
           email: parsedUser.userID, // userID is used as email in this system
           barangay: parsedUser.barangay,
-          barangay_position: parsedUser.barangay_position
+          barangay_position: parsedUser.barangay_position,
+          profile_pic: parsedUser.profile_pic || undefined
         };
         console.log('Mapped user:', mappedUser);
         setUser(mappedUser);

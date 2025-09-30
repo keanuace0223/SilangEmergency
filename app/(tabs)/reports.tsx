@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import React from 'react'
-import { Animated, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Animated, Dimensions, FlatList, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AppModal from '../../components/AppModal'
 import LocationPicker from '../../components/LocationPicker'
+import { images } from '../../constants/images'
 import { api } from '../../src/api/client'
 import { useUser } from '../../src/context/UserContext'
 
@@ -87,9 +88,12 @@ const Reports = () => {
   // Fetch reports from API
   const fetchReports = React.useCallback(async () => {
     try {
+      if (!user?.id) {
+        setReports([])
+        return
+      }
       setIsLoading(true)
-      const userId = user?.id || 1 // Use current user ID or default to 1
-      const reportsData = await api.reports.getAll(userId)
+      const reportsData = await api.reports.getAll(user.id)
       setReports(reportsData)
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Failed to fetch reports'
@@ -108,8 +112,8 @@ const Reports = () => {
 
   // Load reports on component mount
   React.useEffect(() => {
-    fetchReports()
-  }, [fetchReports])
+    if (user?.id) { fetchReports() }
+  }, [fetchReports, user?.id])
 
   // Handle report selection
   const handleReportPress = (report: any) => {
@@ -140,7 +144,7 @@ const Reports = () => {
   // Handle location selection
   const handleLocationSelect = (location: { latitude: number; longitude: number; address?: string }) => {
     setSelectedLocation(location)
-    setLocation(location.address || `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`)
+    setLocation(location.address || `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`)
     setShowLocationPicker(false)
   }
 
@@ -315,22 +319,18 @@ const Reports = () => {
     <SafeAreaView className={`flex-1 bg-gray-50`}>
       <View className={`flex-1 bg-gray-50 pt-4`} style={{ paddingBottom: insets.bottom }}>
         {/* Header */}
-        <View className={`bg-white px-8 py-8 border-b border-gray-100 shadow-sm align-center`}>
-          <View className="flex-row items-center justify-between align-center">
-            <View className="flex-1 self-center p-2 mt-4">
-              <Text className={`text-5xl font-bold text-blue-500 mb-2`}>Reports</Text>
-              <Text className={`text-md font-medium align-center text-gray-600`}>
-                {getFilteredReports().length} of {reports.length} {reports.length === 1 ? 'report' : 'reports'}
-                {activeFilter !== 'All' && ` (${activeFilter} priority)`}
-              </Text>
-            </View>
-            {user && (
-              <View className={`px-4 py-2 rounded-full bg-blue-50`}>
-                <Text className={`text-xs font-semibold text-blue-700`}>
-                  {user?.name || `User ${user?.id}`}
+        <View className={`bg-white px-8 py-8 border-b border-gray-100 shadow-sm`}>
+          <View className="flex-row items-center justify-between">
+            <View className="flex-1 self-center p-2 mt-4 flex-row items-center">
+              <Image source={images.logo} style={{ width: 90, height: 90, resizeMode: 'contain', marginRight: 20 }} />
+              <View>
+                <Text className={`text-5xl font-bold text-blue-500 mb-2`}>Reports</Text>
+                <Text className={`text-md font-medium text-gray-600`}>
+                  {getFilteredReports().length} of {reports.length} {reports.length === 1 ? 'report' : 'reports'}
+                  {activeFilter !== 'All' && ` (${activeFilter} priority)`}
                 </Text>
               </View>
-            )}
+            </View>
           </View>
         </View>
 
@@ -368,7 +368,20 @@ const Reports = () => {
             <Text className={`text-lg text-gray-500`}>Loading your reports...</Text>
           </View>
         ) : getFilteredReports().length === 0 ? (
-          <View className={`flex-1 items-center justify-center px-8 bg-gray-50`}>
+          <ScrollView
+            className={`flex-1 bg-gray-50`}
+            contentContainerStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={["#4A90E2"]}
+                tintColor={'#4A90E2'}
+                progressBackgroundColor={'#ffffff'}
+              />
+            }
+            showsVerticalScrollIndicator={false}
+          >
             <View className={`bg-white p-10 rounded-3xl shadow-lg items-center mx-4`}>
               <View className="w-20 h-20 bg-blue-50 rounded-full items-center justify-center mb-6">
                 <Ionicons name="document-outline" size={40} color="#4A90E2" />
@@ -379,11 +392,10 @@ const Reports = () => {
               <Text className={`text-center text-base leading-6 px-2 text-gray-500`}>
                 {reports.length === 0 
                   ? 'Tap the + button below to create your first emergency report'
-                  : `Try selecting a different filter or create a new report`
-                }
+                  : `Try selecting a different filter or create a new report`}
               </Text>
             </View>
-          </View>
+          </ScrollView>
         ) : (
           <View className={`flex-1 bg-gray-50`}>
             <FlatList
@@ -408,10 +420,20 @@ const Reports = () => {
         )}
       </View>
 
+      {/* Speed dial call button */}
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => Linking.openURL('tel:09356016738')}
+        className="absolute right-5 z-50 w-14 h-14 rounded-full bg-red-500 items-center justify-center shadow-lg"
+        style={{ bottom: insets.bottom + 150 }}
+      >
+        <Ionicons name="call" size={24} color="#fff" />
+      </TouchableOpacity>
+
       <TouchableOpacity
         activeOpacity={0.9}
         onPress={() => setShowAdd(true)}
-        className="absolute right-5 z-50 w-14  h-14 rounded-full bg-[#4A90E2] items-center justify-center shadow-lg"
+        className="absolute right-5 z-50 w-14 h-14 rounded-full bg-[#4A90E2] items-center justify-center shadow-lg"
         style={{ bottom: insets.bottom + 90 }}
       >
         <Ionicons name="add" size={28} color="#fff" />
@@ -548,8 +570,8 @@ const Reports = () => {
                 </View>
                 <View className="flex-1">
                   <Text className={`text-2xl font-bold mb-1 text-gray-900`}>{selectedReport.incident_type}</Text>
-                  <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_tag) + '20' }}>
-                    <Text className="text-sm font-semibold" style={{ color: getUrgencyColor(selectedReport.urgency_tag) }}>{selectedReport.urgency_tag.toUpperCase()} PRIORITY</Text>
+                  <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_tag) + 'E6' }}>
+                    <Text className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>{selectedReport.urgency_tag.toUpperCase()} PRIORITY</Text>
                   </View>
                 </View>
               </View>

@@ -15,10 +15,6 @@ export const DarkModeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const isInitialized = useRef(false);
   const darkModeRef = useRef(false);
 
-  useEffect(() => {
-    loadThemePreference();
-  }, []);
-
   const loadThemePreference = useCallback(async () => {
     try {
       const savedTheme = await AsyncStorage.getItem('darkMode');
@@ -34,6 +30,10 @@ export const DarkModeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       isInitialized.current = true;
     }
   }, []);
+
+  useEffect(() => {
+    loadThemePreference();
+  }, [loadThemePreference]);
 
   const toggleDarkMode = useCallback(async () => {
     if (!isInitialized.current) return;

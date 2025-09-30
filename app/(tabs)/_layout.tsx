@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import React from 'react';
 
 const TabsLayout = () => {
   const TAB_BAR_SHADOW = {
@@ -16,18 +15,6 @@ const TabsLayout = () => {
   
   };
 
-  const iconHome = ({ color, size }: { color: string; size: number }) => (
-    <Ionicons name="home" size={size ?? 25} color={color} />
-  )
-  const iconReports = ({ color, size }: { color: string; size: number }) => (
-    <Ionicons name="newspaper" size={size ?? 25} color={color} />
-  )
-  const iconDrafts = ({ color, size }: { color: string; size: number }) => (
-    <Ionicons name="documents" size={size ?? 25} color={color} />
-  )
-  const iconProfile = ({ color, size }: { color: string; size: number }) => (
-    <Ionicons name="person" size={size ?? 25} color={color} />
-  )
 
   return (
     <Tabs 

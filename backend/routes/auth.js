@@ -1,18 +1,9 @@
 const express = require("express");
-const { Pool } = require("pg");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
-
 const router = express.Router();
-
-// DB connection (shared by router handlers)
-const pool = new Pool({
-  user: "postgres",
-  host: "localhost",
-  database: "SilangEmergency",
-  password: "kenpogi0223",
-  port: 5432,
-});
+const pool = require("../config/database");
+const config = require("../config/config");
 
 // Login route mounted by parent app at /api/auth
 router.post("/login", async (req, res) => {
@@ -39,8 +30,8 @@ router.post("/login", async (req, res) => {
     // Generate JWT
     const token = jwt.sign(
       { id: user.id, userID: user.userid },
-      "supersecretkey", // use process.env.JWT_SECRET in real apps
-      { expiresIn: "1h" }
+      config.jwt.secret,
+      { expiresIn: config.jwt.expiresIn }
     );
 
     // Send token + user info
@@ -52,6 +43,7 @@ router.post("/login", async (req, res) => {
         name: user.name,
         barangay: user.barangay,
         barangay_position: user.barangay_position,
+        profile_pic: user.profile_pic || null,
       },
     });
   } catch (err) {
