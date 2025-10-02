@@ -2,17 +2,26 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Location from 'expo-location'
 // removed router; using in-place modal like reports screen
 import * as ImagePicker from 'expo-image-picker'
+ 
 import React from 'react'
-import { ActivityIndicator, Animated, Dimensions, FlatList, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Dimensions, FlatList, Image, KeyboardAvoidingView, Linking, Modal, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 import LocationPicker from '../../components/LocationPicker'
+import ScaledText from '../../components/ScaledText'
+import { Body, Subtitle, Title } from '../../components/Typography'
 import { images } from '../../constants/images'
 import { api } from '../../src/api/client'
+import { useSettings } from '../../src/context/SettingsContext'
 import { useUser } from '../../src/context/UserContext'
 
 const Home = () => {
   const insets = useSafeAreaInsets()
+  const { width } = useWindowDimensions()
+  const { textScale } = useSettings()
+  const spacingScale = Math.min(textScale, 1.2) * (width < 360 ? 0.95 : width > 720 ? 1.1 : 1)
+  const s = (px: number) => Math.round(px * spacingScale)
+ 
   const { user } = useUser()
   // local detail modal state (mirror reports screen)
   const [showDetail, setShowDetail] = React.useState(false)
@@ -40,6 +49,21 @@ const Home = () => {
 
   const [coords, setCoords] = React.useState<{ latitude: number; longitude: number } | null>(null)
   const [isLocating, setIsLocating] = React.useState(false)
+
+  // Modal state
+  const [showSuccessModal, setShowSuccessModal] = React.useState(false)
+  const [modalTitle, setModalTitle] = React.useState('')
+  const [modalMessage, setModalMessage] = React.useState('')
+  const [modalIcon, setModalIcon] = React.useState<'checkmark-circle' | 'warning' | 'information-circle'>('information-circle')
+  const [modalIconColor, setModalIconColor] = React.useState('#2563EB')
+
+  const showModal = (title: string, message: string, icon: 'checkmark-circle' | 'warning' | 'information-circle', color: string) => {
+    setModalTitle(title)
+    setModalMessage(message)
+    setModalIcon(icon)
+    setModalIconColor(color)
+    setShowSuccessModal(true)
+  }
 
   const fetchReports = React.useCallback(async () => {
     try {
@@ -103,6 +127,7 @@ const Home = () => {
 
   const handleSubmitReport = async () => {
     if (!incidentType || !urgency || (!location && !selectedLocation) || !description) {
+      showModal('Validation error', 'Please fill in all required fields', 'warning', '#EF4444')
       return
     }
     setIsSubmitting(true)
@@ -114,42 +139,20 @@ const Home = () => {
         description,
         mediaUrls: media.map((m: { uri: string; type?: string }) => m.uri),
       }
-      await api.reports.create(payload, user?.id || 1)
+      if (!user?.id) { showModal('Not signed in', 'Please sign in again to submit a report.', 'warning', '#EF4444'); return }
+      await api.reports.create(payload, user.id)
       await fetchReports()
+      showModal('Report submitted', 'Your report has been submitted successfully.', 'checkmark-circle', '#16A34A')
       setShowAdd(false)
       resetAddForm()
-    } catch {
-      // noop
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to submit report'
+      showModal('Submission error', msg, 'warning', '#EF4444')
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // Drag-to-close behavior like reports screen
-  const translateY = React.useRef(new Animated.Value(0)).current
-  const panResponder = React.useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_: any, g: any) => Math.abs(g.dy) > 4,
-      onPanResponderMove: (_: any, g: any) => {
-        const deltaY = g.dy
-        const translate = deltaY >= 0 ? deltaY : deltaY * 0.2
-        translateY.setValue(translate)
-      },
-      onPanResponderRelease: (_: any, g: any) => {
-        const shouldClose = g.dy > 100 || g.vy > 1.0
-        if (shouldClose) {
-          Animated.timing(translateY, { toValue: Dimensions.get('window').height, duration: 180, useNativeDriver: true }).start(() => {
-            setShowAdd(false)
-            translateY.setValue(0)
-            resetAddForm()
-          })
-        } else {
-          Animated.spring(translateY, { toValue: 0, bounciness: 2, speed: 22, useNativeDriver: true }).start()
-        }
-      },
-    })
-  ).current
 
   React.useEffect(() => { if (user?.id) { fetchReports() } }, [fetchReports, user?.id])
 
@@ -231,6 +234,13 @@ const Home = () => {
     return colorMap[urgency] || '#6B7280'
   }
 
+  const formatShortId = (id: any) => {
+    if (id == null) return ''
+    const s = String(id)
+    if (s.includes('-')) return s.replace(/-/g, '').slice(0, 4).toUpperCase()
+    return s.slice(0, 4).toUpperCase()
+  }
+
   const handleImagePress = (images: string[], index: number) => {
     setImageViewerImages(images)
     setSelectedImageIndex(index)
@@ -304,22 +314,22 @@ const Home = () => {
     <SafeAreaView className={`flex-1 bg-gray-50`} edges={['top','bottom','left','right']}>
       <ScrollView contentContainerStyle={{ paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#4A90E2"]} tintColor={'#4A90E2'} progressBackgroundColor={'#ffffff'} /> }>
         {/* Header */}
-        <View className={`bg-white px-6 py-6 border-b border-gray-100 shadow-sm`}>
+        <View className={`bg-white px-6 py-6 border-b border-gray-100 shadow-sm`} style={{ paddingHorizontal: s(24), paddingVertical: s(24) }}>
           <View className="flex-row items-center justify-between">
             <View className="flex-1 self-center p-1 mt-2 flex-row items-center">
-              <Image source={images.logo} style={{ width: 90, height: 90, resizeMode: 'contain', marginRight: 20 }} />
+              <Image source={images.logo} style={{ width: Math.round(70 * Math.min(textScale, 1.25)), height: Math.round(70 * Math.min(textScale, 1.25)), resizeMode: 'contain', marginRight: s(20) }} />
               <View>
-                <Text className={`text-5xl font-bold text-blue-500 mb-2`}>Dashboard</Text>
-                <Text className={`text-md font-medium text-gray-600`}>Overview of reports and activity</Text>
+                <Title style={{ marginBottom: s(4) }}>Silang DRRMO</Title>
+                <Subtitle style={{ color: '#4B5563' }}>Report Overviews</Subtitle>
               </View>
             </View>
           </View>
         </View>
         {/* Header with user info */}
-        <View className="px-5 pt-4">
-          <View className="bg-white rounded-2xl p-4 border border-gray-100">
+        <View className="px-5 pt-4" style={{ paddingHorizontal: s(20), paddingTop: s(16) }}>
+          <View className="bg-[#3B82F6] rounded-2xl border border-gray-100" style={{ padding: s(16) }}>
             <View className="flex-row items-center">
-              <View className="w-20 h-20 rounded-full overflow-hidden bg-gray-100 mr-8">
+              <View className="w-20 h-20 rounded-full overflow-hidden bg-gray-100" style={{ marginRight: s(32), width: s(80), height: s(80) }}>
                 {user?.profile_pic ? (
                   <Image source={{ uri: user.profile_pic }} className="w-full h-full" resizeMode="cover" />
                 ) : (
@@ -329,67 +339,67 @@ const Home = () => {
                 )}
               </View>
               <View className="flex-1">
-                <Text className="text-lg font-bold text-gray-900" numberOfLines={1}>{user?.name || 'User'}</Text>
-                <Text className="text-gray-600 mt-0.5" numberOfLines={1}>Barangay: <Text className="font-medium">{user?.barangay || '—'}</Text></Text>
-                <Text className="text-gray-600" numberOfLines={1}>Position: <Text className="font-medium">{user?.barangay_position || '—'}</Text></Text>
+                <Title style={{ color: '#fff' }} numberOfLines={1}>{user?.name || 'User'}</Title>
+                <Body style={{ color: '#E5E7EB', marginTop: 2 }} numberOfLines={1}>Barangay: <Text className="font-medium">{user?.barangay || '—'}</Text></Body>
+                <Body style={{ color: '#E5E7EB' }} numberOfLines={1}>Position: <Text className="font-medium">{user?.barangay_position || '—'}</Text></Body>
               </View>
             </View>
           </View>
         </View>
 
         {/* Stats */}
-        <View className="px-5 mt-4">
-          <View className="bg-white rounded-2xl p-4 border border-gray-100">
+        <View className="px-5 mt-4" style={{ paddingHorizontal: s(20), marginTop: s(16) }}>
+          <View className="bg-white rounded-2xl border border-gray-100" style={{ padding: s(16) }}>
             <View className="flex-row justify-between items-center mb-3">
-              <Text className="text-base font-semibold text-gray-900">Overview</Text>
+              <ScaledText baseSize={16} className="font-semibold text-gray-900">Overview</ScaledText>
               {isLoading ? <ActivityIndicator size="small" color="#4A90E2" /> : null}
             </View>
 
             {error ? (
-              <Text className="text-red-600 text-sm mb-2">{error}</Text>
+              <ScaledText baseSize={13} className="text-red-600 mb-2">{error}</ScaledText>
             ) : null}
 
             <View className="flex-row justify-between">
-              <View className="flex-1 mr-2 rounded-xl p-3" style={{ backgroundColor: '#3B82F6' }}>
-                <Text className="text-xs" style={{ color: '#FFFFFF' }}>Total Reports</Text>
-                <Text className="text-2xl font-bold mt-1" style={{ color: '#FFFFFF' }}>{reports.length}</Text>
+              <View className="flex-1 rounded-xl" style={{ backgroundColor: '#3B82F6', padding: s(12), marginRight: s(8) }}>
+                <ScaledText baseSize={12} style={{ color: '#FFFFFF' }}>Total Reports</ScaledText>
+                <ScaledText baseSize={22} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{reports.length}</ScaledText>
               </View>
-              <View className="flex-1 ml-2 rounded-xl p-3" style={{ backgroundColor: '#EF4444' }}>
-                <Text className="text-xs" style={{ color: '#FFFFFF' }}>High Urgency</Text>
-                <Text className="text-2xl font-bold mt-1" style={{ color: '#FFFFFF' }}>{countsByUrgency['High'] || 0}</Text>
+              <View className="flex-1 rounded-xl" style={{ backgroundColor: '#EF4444', padding: s(12), marginLeft: s(8) }}>
+                <ScaledText baseSize={12} style={{ color: '#FFFFFF' }}>High Urgency</ScaledText>
+                <ScaledText baseSize={22} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{countsByUrgency['High'] || 0}</ScaledText>
               </View>
             </View>
 
             {/* By incident type */}
-            <View className="mt-4">
-              <Text className="text-sm font-semibold text-gray-800 mb-2">Reports by Incident Type</Text>
+            <View style={{ marginTop: s(16) }}>
+              <ScaledText baseSize={13} className="font-semibold text-gray-800 mb-2">Reports by Incident Type</ScaledText>
               <View className="flex-row flex-wrap -mx-1">
                 {incidentEntries.map(([type, count]: [string, number]) => (
                   <View key={type} className="w-1/2 px-1 mb-2">
-                    <View className="rounded-xl p-3" style={{ backgroundColor: getIncidentColor(type) + 'E6' }}>
+                    <View className="rounded-xl" style={{ backgroundColor: getIncidentColor(type) + 'E6', padding: s(12) }}>
                       <View className="flex-row items-center">
                         <Ionicons name={getIncidentIcon(type)} size={18} color="#FFFFFF" />
-                        <Text className="text-xs ml-2" style={{ color: '#FFFFFF' }} numberOfLines={1}>{type}</Text>
+                        <ScaledText baseSize={12} className="ml-2" style={{ color: '#FFFFFF' }} numberOfLines={1}>{type}</ScaledText>
                       </View>
-                      <Text className="text-xl font-bold mt-1" style={{ color: '#FFFFFF' }}>{count}</Text>
+                      <ScaledText baseSize={20} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{count}</ScaledText>
                     </View>
                   </View>
                 ))}
                 {incidentEntries.length === 0 && !isLoading ? (
-                  <Text className="text-gray-500 text-sm">No reports yet.</Text>
+                  <ScaledText baseSize={13} className="text-gray-500">No reports yet.</ScaledText>
                 ) : null}
               </View>
             </View>
 
             {/* By urgency */}
-            <View className="mt-2">
-              <Text className="text-sm font-semibold text-gray-800 mb-2">Reports by Urgency</Text>
+            <View style={{ marginTop: s(8) }}>
+              <ScaledText baseSize={13} className="font-semibold text-gray-800 mb-2">Reports by Urgency</ScaledText>
               <View className="flex-row flex-wrap -mx-1">
                 {urgencyEntries.map(([level, count]: [string, number]) => (
                   <View key={level} className="w-1/3 px-1 mb-2">
-                    <View className="rounded-xl p-3 items-center" style={{ backgroundColor: getUrgencyColor(level) + 'E6' }}>
-                      <Text className="text-xs" style={{ color: '#FFFFFF' }} numberOfLines={1}>{level}</Text>
-                      <Text className="text-xl font-bold mt-1" style={{ color: '#FFFFFF' }}>{count}</Text>
+                    <View className="rounded-xl items-center" style={{ backgroundColor: getUrgencyColor(level) + 'E6', padding: s(12) }}>
+                      <ScaledText baseSize={12} style={{ color: '#FFFFFF' }} numberOfLines={1}>{level}</ScaledText>
+                      <ScaledText baseSize={20} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{count}</ScaledText>
                     </View>
                   </View>
                 ))}
@@ -399,35 +409,35 @@ const Home = () => {
         </View>
 
         {/* Reports list */}
-        <View className="px-5 mt-4">
-          <Text className="text-base font-semibold text-gray-900 mb-2">Recent Reports</Text>
+        <View className="px-5 mt-4" style={{ paddingHorizontal: s(20), marginTop: s(16) }}>
+          <ScaledText baseSize={16} className="font-semibold text-gray-900" style={{ marginBottom: s(8) }}>Recent Reports</ScaledText>
           {isLoading ? (
-            <View className="bg-white rounded-2xl p-6 border border-gray-100 items-center">
+            <View className="bg-white rounded-2xl border border-gray-100 items-center" style={{ padding: s(24) }}>
               <ActivityIndicator size="small" color="#4A90E2" />
-              <Text className="text-gray-500 text-sm mt-2">Loading...</Text>
+              <ScaledText baseSize={13} className="text-gray-500 mt-2">Loading...</ScaledText>
             </View>
           ) : (
             <FlatList
               data={reports.slice(0, 3)}
               keyExtractor={(item) => String(item.id)}
               renderItem={renderReportItem}
-              ItemSeparatorComponent={() => <View className="h-3" />}
+              ItemSeparatorComponent={() => <View style={{ height: s(12) }} />}
               scrollEnabled={false}
-              ListEmptyComponent={<Text className="text-gray-500 text-sm">No reports to show.</Text>}
+              ListEmptyComponent={<ScaledText baseSize={13} className="text-gray-500">No reports to show.</ScaledText>}
             />
           )}
         </View>
 
         {/* Current location map */}
-        <View className="px-5 mt-4">
-          <Text className="text-base font-semibold text-gray-900 mb-2">Your Current Location</Text>
+        <View className="px-5 mt-4" style={{ paddingHorizontal: s(20), marginTop: s(16) }}>
+          <ScaledText baseSize={16} className="font-semibold text-gray-900" style={{ marginBottom: s(8) }}>Your Current Location</ScaledText>
           <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             {coords && mapHtml ? (
-              <WebView source={{ html: mapHtml }} style={{ height: 220 }} />
+              <WebView source={{ html: mapHtml }} style={{ height: Math.max(200, Math.min(260, Math.round(220 * Math.min(textScale, 1.2)))) }} />
             ) : (
-              <View className="p-6 items-center justify-center" style={{ height: 220 }}>
+              <View className="items-center justify-center" style={{ height: 220, padding: s(24) }}>
                 {isLocating ? <ActivityIndicator size="small" color="#4A90E2" /> : null}
-                <Text className="text-gray-500 text-sm mt-2">{isLocating ? 'Getting your location…' : 'Location unavailable'}</Text>
+                <ScaledText baseSize={13} className="text-gray-500 mt-2">{isLocating ? 'Getting your location…' : 'Location unavailable'}</ScaledText>
               </View>
             )}
           </View>
@@ -439,26 +449,27 @@ const Home = () => {
       </ScrollView>
 
       {/* Add Report Modal (mirrors reports screen) */}
-      <Modal visible={showAdd} animationType="slide" onRequestClose={() => { setShowAdd(false); }}>
+      <Modal visible={showAdd} animationType="slide" onRequestClose={() => { setShowAdd(false); resetAddForm() }}>
         <KeyboardAvoidingView className="flex-1" behavior={Platform.select({ ios: 'padding', android: undefined })}>
-          <Animated.View style={{ transform: [{ translateY }] }} className={`flex-1 bg-white p-4`}>
-            <View className="absolute top-0 left-0 right-0 h-12 z-50 items-center justify-start pt-4" {...panResponder.panHandlers}>
-              <View className={`mt-2 w-12 h-1.5 rounded-full bg-gray-300`} />
-            </View>
-            <View className="pt-6 mt-6">
-              <Text className={`text-3xl font-bold mb-2 text-black`}>New Report</Text>
+          <View className={`flex-1 bg-white p-4`}>
+            <View className="flex-row items-center justify-between pt-6 mb-4">
+              <TouchableOpacity onPress={() => { setShowAdd(false); resetAddForm() }} className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center">
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+              <Text className={`text-3xl font-bold text-black`}>New Report</Text>
+              <View className="w-10 h-10" />
             </View>
             <View className="pt-6" />
             <ScrollView className="flex-1" contentContainerClassName="pb-28" showsVerticalScrollIndicator={false}>
               <Text className={`text-sm mb-1 text-gray-600`}>Incident type</Text>
-              <View className="relative mb-3">
-                <TouchableOpacity onPress={() => setShowIncidentMenu((v: boolean) => !v)} className={`border rounded-xl px-3 py-3 border-gray-300 bg-white`}>
+              <View className="relative mb-4">
+                <TouchableOpacity onPress={() => setShowIncidentMenu((v: boolean) => !v)} className={`border rounded-xl px-4 py-4 border-gray-300 bg-white`}>
                   <View className="flex-row items-center justify-between">
                     <View className="flex-row items-center flex-1">
                       {incidentType && (
                         <Ionicons name={getIncidentIcon(incidentType)} size={20} color={getIncidentColor(incidentType)} />
                       )}
-                      <Text className={`text-base ml-3 text-black`}>
+                      <Text className={`text-lg ml-3 text-black`}>
                         {incidentType || 'Select incident type'}
                       </Text>
                     </View>
@@ -466,7 +477,7 @@ const Home = () => {
                   </View>
                 </TouchableOpacity>
                 {showIncidentMenu && (
-                  <View className={`absolute left-0 right-0 top-14 rounded-xl overflow-hidden z-50 bg-white border border-gray-300`}>
+                  <View className={`absolute left-0 right-0 top-16 rounded-xl overflow-hidden z-50 bg-white border border-gray-300`}>
                     {[
                       { type: 'Fire', icon: 'flame' as const, color: '#FF6B35' },
                       { type: 'Vehicular Accident', icon: 'car' as const, color: '#FF4444' },
@@ -474,9 +485,9 @@ const Home = () => {
                       { type: 'Earthquake', icon: 'earth' as const, color: '#8B4513' },
                       { type: 'Electrical', icon: 'flash' as const, color: '#FFD700' }
                     ].map(opt => (
-                      <TouchableOpacity key={opt.type} className={`px-3 py-3 flex-row items-center active:bg-gray-50`} onPress={() => { setIncidentType(opt.type as any); setShowIncidentMenu(false) }}>
+                      <TouchableOpacity key={opt.type} className={`px-4 py-4 flex-row items-center active:bg-gray-50`} onPress={() => { setIncidentType(opt.type as any); setShowIncidentMenu(false) }}>
                         <Ionicons name={opt.icon} size={20} color={opt.color} />
-                        <Text className={`text-base ml-3 text-black`}>{opt.type}</Text>
+                        <Text className={`text-lg ml-3 text-black`}>{opt.type}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -484,18 +495,18 @@ const Home = () => {
               </View>
 
               <Text className={`text-sm mb-1 text-gray-600`}>Location</Text>
-              <TouchableOpacity onPress={() => setShowLocationPicker(true)} className={`border rounded-xl px-3 py-3 mb-3 flex-row items-center justify-between border-gray-300 bg-white`}>
-                <Text className={`text-base ${location ? 'text-black' : 'text-gray-400'}`}>
+              <TouchableOpacity onPress={() => setShowLocationPicker(true)} className={`border rounded-xl px-4 py-4 mb-4 flex-row items-center justify-between border-gray-300 bg-white`}>
+                <Text className={`text-lg ${location ? 'text-black' : 'text-gray-400'}`}>
                   {location || 'Tap to select location on map'}
-      </Text>
-                <Ionicons name="location" size={20} color="#4A90E2" />
+                </Text>
+                <Ionicons name="location" size={22} color="#4A90E2" />
               </TouchableOpacity>
 
               <Text className={`text-sm mb-1 text-gray-600`}>Urgency</Text>
-              <View className="flex-row gap-2 mb-3">
+              <View className="flex-row gap-3 mb-4">
                 {(['Low','Moderate','High'] as const).map(level => (
-                  <TouchableOpacity key={level} onPress={() => setUrgency(level)} activeOpacity={urgency === level ? 1 : 0.7} className={`px-4 py-2 rounded-full border ${ urgency === level ? (level === 'High' ? 'bg-red-500 border-red-500' : level === 'Moderate' ? 'bg-yellow-500 border-yellow-500' : 'bg-green-500 border-green-500') : 'bg-transparent border-gray-300' }`}>
-                    <Text className={`font-semibold ${ urgency === level ? 'text-white' : 'text-gray-700' }`}>{level}</Text>
+                  <TouchableOpacity key={level} onPress={() => setUrgency(level)} activeOpacity={urgency === level ? 1 : 0.7} className={`px-6 py-3 rounded-full border ${ urgency === level ? (level === 'High' ? 'bg-red-500 border-red-500' : level === 'Moderate' ? 'bg-yellow-500 border-yellow-500' : 'bg-green-500 border-green-500') : 'bg-transparent border-gray-300' }`}>
+                    <Text className={`font-semibold text-lg ${ urgency === level ? 'text-white' : 'text-gray-700' }`}>{level}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -509,13 +520,13 @@ const Home = () => {
                     </View>
                   ))}
                 </View>
-                <TouchableOpacity onPress={handlePickImages} className={`self-start px-4 py-2 rounded-lg bg-gray-100`}>
-                  <Text className={`font-semibold text-gray-800`}>Add photos/videos</Text>
+                <TouchableOpacity onPress={handlePickImages} className={`self-start px-6 py-3 rounded-lg bg-gray-100`}>
+                  <Text className={`font-semibold text-lg text-gray-800`}>Add photos/videos</Text>
                 </TouchableOpacity>
               </View>
 
               <Text className={`text-sm mb-1 text-gray-600`}>Description</Text>
-              <TextInput placeholder="Describe the incident..." value={description} onChangeText={setDescription} className={`border rounded-xl px-3 py-3 text-base h-40 border-gray-300 bg-white text-black`} placeholderTextColor="#8E8E93" multiline textAlignVertical="top" />
+              <TextInput placeholder="Describe the incident..." value={description} onChangeText={setDescription} className={`border rounded-xl px-4 py-4 text-lg h-48 border-gray-300 bg-white text-black`} placeholderTextColor="#8E8E93" multiline textAlignVertical="top" />
             </ScrollView>
 
             <View className="absolute bottom-0 left-0 right-0 p-4">
@@ -528,7 +539,7 @@ const Home = () => {
                 </TouchableOpacity>
               </View>
             </View>
-          </Animated.View>
+          </View>
         </KeyboardAvoidingView>
       </Modal>
       {/* Report Detail Modal (mirrors reports screen) */}
@@ -589,11 +600,11 @@ const Home = () => {
               {/* Report Information */}
               <View className="mb-6">
                 <Text className={`text-lg font-semibold mb-2 text-gray-900`}>Report Information</Text>
-                <View className={`p-4 rounded-xl bg-gray-50`}>
-                  <View className="flex-row justify-between mb-2">
-                    <Text className={'text-gray-600'}>Report ID:</Text>
-                    <Text className={`font-medium text-gray-900`}>#{selectedReport.id}</Text>
-                  </View>
+                  <View className={`p-4 rounded-xl bg-gray-50`}>
+                    <View className="flex-row justify-between mb-2">
+                      <Text className={'text-gray-600'}>Report ID:</Text>
+                      <Text className={`font-medium text-gray-900`}>#{formatShortId(selectedReport.id)}</Text>
+                    </View>
                   <View className="flex-row justify-between mb-2">
                     <Text className={'text-gray-600'}>Submitted:</Text>
                     <Text className={`font-medium text-gray-900`}>
@@ -673,6 +684,28 @@ const Home = () => {
       >
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
+
+      {/* Success Modal */}
+      <Modal visible={showSuccessModal} transparent={true} animationType="fade" onRequestClose={() => setShowSuccessModal(false)}>
+        <View className="flex-1 justify-center items-center bg-black/50">
+          <View className="bg-white rounded-2xl p-6 mx-6 max-w-sm w-full">
+            <View className="items-center">
+              <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: modalIconColor + '20' }}>
+                <Ionicons name={modalIcon} size={32} color={modalIconColor} />
+              </View>
+              <Text className="text-xl font-bold text-gray-900 mb-2 text-center">{modalTitle}</Text>
+              <Text className="text-gray-600 text-center mb-6 leading-6">{modalMessage}</Text>
+              <TouchableOpacity
+                onPress={() => setShowSuccessModal(false)}
+                className="w-full py-3 rounded-xl items-center"
+                style={{ backgroundColor: modalIconColor }}
+              >
+                <Text className="text-white font-semibold text-base">OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }

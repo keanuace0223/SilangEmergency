@@ -2,7 +2,7 @@
   "expo": {
     "name": "Silang Emergency App",
     "slug": "silang_emergency",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/Logo.png",
     "scheme": "silangemergency",
@@ -17,11 +17,16 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.silang.emergency",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/Logo.png",
+        "backgroundImage": "./assets/images/Logo.png",
+        "monochromeImage": "./assets/images/Logo.png"
       },
       "edgeToEdgeEnabled": false,
       "predictiveBackGestureEnabled": false,
@@ -37,7 +42,7 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png",
+      "favicon": "./assets/images/Logo.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -58,6 +63,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8685a63a-7826-462f-a4cb-c2ef9d6f4492"
+      }
     }
   }
 }

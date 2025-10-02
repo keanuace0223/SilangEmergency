@@ -2,7 +2,7 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const router = express.Router();
-const pool = require("../config/database");
+const { supabaseAdmin } = require("../config/supabase");
 const config = require("../config/config");
 
 // Login route mounted by parent app at /api/auth
@@ -10,20 +10,29 @@ router.post("/login", async (req, res) => {
   const { userID, password } = req.body;
 
   try {
-    // Check if user exists
-    const result = await pool.query(
-      'SELECT * FROM "users" WHERE "userid" = $1 LIMIT 1',
-      [userID]
-    );
+    // Check if user exists in Supabase
+    const { data: user, error } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('userid', userID)
+      .single();
 
-    if (result.rows.length === 0) {
+    if (error || !user) {
       return res.status(401).json({ error: "Invalid userID or password" });
     }
 
-    const user = result.rows[0];
+    // Check password (support both plain text and hashed passwords during migration)
+    let passwordValid = false;
+    
+    if (user.password_hash) {
+      // Check hashed password
+      passwordValid = await bcrypt.compare(password, user.password_hash);
+    } else {
+      // Fallback for plain text passwords (migration period)
+      passwordValid = password === user.password;
+    }
 
-    // Plain text password check (testing only). Replace with bcrypt in production.
-    if (password !== user.password) {
+    if (!passwordValid) {
       return res.status(401).json({ error: "Invalid userID or password" });
     }
 

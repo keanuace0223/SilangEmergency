@@ -2,6 +2,7 @@ import * as NavigationBar from 'expo-navigation-bar';
 import { Stack, usePathname } from "expo-router";
 import React, { useEffect } from "react";
 import { UserProvider } from '../src/context/UserContext';
+import { SettingsProvider } from '../src/context/SettingsContext';
 import './global.css';
 
 export default function RootLayout() {
@@ -51,12 +52,14 @@ export default function RootLayout() {
   }, [pathname]);
 
   return (
-      <UserProvider>
-        <Stack screenOptions={{headerShown: false}}>
-          <Stack.Screen name="(auth)" options={{ headerShown: false }}/>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }}/>
-          <Stack.Screen name="Reports/[id]" options={{ headerShown: false }}/>
-        </Stack>
-      </UserProvider>
+      <SettingsProvider>
+        <UserProvider>
+          <Stack screenOptions={{headerShown: false}}>
+            <Stack.Screen name="(auth)" options={{ headerShown: false }}/>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }}/>
+            <Stack.Screen name="Reports/[id]" options={{ headerShown: false }}/>
+          </Stack>
+        </UserProvider>
+      </SettingsProvider>
   )
 }

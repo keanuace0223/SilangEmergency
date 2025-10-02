@@ -1,8 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { getSignedAvatarUrl } from '../lib/supabase';
+
+// Cache for signed URLs to avoid repeated network calls
+const urlCache = new Map<string, { url: string; expires: number }>();
+const CACHE_DURATION = 23 * 60 * 60 * 1000; // 23 hours (shorter than 24 hour expiry)
 
 interface User {
-  id: number;
+  id: string;
   name: string;
   email: string;
   barangay: string;
@@ -17,6 +22,34 @@ interface UserContextType {
   refreshUser: () => Promise<void>;
   isLoading: boolean;
 }
+
+// Helper function to get cached or fresh signed URL
+const getCachedSignedUrl = async (filePath: string): Promise<string | null> => {
+  const now = Date.now();
+  const cached = urlCache.get(filePath);
+  
+  // Return cached URL if still valid
+  if (cached && cached.expires > now) {
+    return cached.url;
+  }
+  
+  // Get fresh signed URL
+  try {
+    const { url } = await getSignedAvatarUrl(filePath);
+    if (url) {
+      // Cache the URL with expiration
+      urlCache.set(filePath, {
+        url,
+        expires: now + CACHE_DURATION
+      });
+      return url;
+    }
+  } catch (error) {
+    console.warn('Failed to get signed URL:', error);
+  }
+  
+  return null;
+};
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
@@ -35,15 +68,27 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('Parsed user:', parsedUser);
         // Map the user data to match our User interface
         const mappedUser: User = {
-          id: parsedUser.id,
+          id: String(parsedUser.id),
           name: parsedUser.name,
           email: parsedUser.userID, // userID is used as email in this system
           barangay: parsedUser.barangay,
           barangay_position: parsedUser.barangay_position,
           profile_pic: parsedUser.profile_pic || undefined
         };
-        console.log('Mapped user:', mappedUser);
+        // Set user immediately with storage path, then lazy load signed URL
         setUser(mappedUser);
+        
+        // If profile_pic looks like a storage path, lazy load the signed URL in background
+        if (parsedUser.profile_pic && typeof parsedUser.profile_pic === 'string' && parsedUser.profile_pic.includes('/')) {
+          // Don't await - load in background to avoid blocking UI
+          getCachedSignedUrl(parsedUser.profile_pic).then(signedUrl => {
+            if (signedUrl) {
+              setUser(prevUser => prevUser ? { ...prevUser, profile_pic: signedUrl } : prevUser);
+            }
+          }).catch(error => {
+            console.warn('Background profile pic loading failed:', error);
+          });
+        }
       } else {
         console.log('No user data found in storage');
         setUser(null);

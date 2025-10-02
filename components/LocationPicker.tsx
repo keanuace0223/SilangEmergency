@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons'
 import * as Location from 'expo-location'
 import React, { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Modal, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Dimensions, Modal, Text, TouchableOpacity, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 import AppModal from './AppModal'
 
@@ -13,7 +13,12 @@ interface LocationPickerProps {
 }
 
 const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLocationSelect, initialLocation }) => {
+  const { width } = Dimensions.get('window')
+  const isSmallScreen = width < 375
+  const isTablet = width > 768
+  
   const [markerPosition, setMarkerPosition] = useState({ latitude: 14.5995, longitude: 120.9842 })
+  const webViewRef = React.useRef<WebView>(null)
   const [selectedLocation, setSelectedLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isGettingLocation, setIsGettingLocation] = useState(false)
@@ -23,6 +28,11 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
   const [modalMessage, setModalMessage] = useState('')
   const [modalIcon, setModalIcon] = useState<'information-circle' | 'warning'>('information-circle')
   const [modalIconColor, setModalIconColor] = useState<string>('#2563EB')
+
+  // Responsive sizing
+  const zoomButtonSize = isSmallScreen ? 40 : isTablet ? 48 : 44
+  const zoomIconSize = isSmallScreen ? 18 : isTablet ? 24 : 20
+  const spacing = isSmallScreen ? 12 : isTablet ? 24 : 20
 
   const showModal = (title: string, message: string, icon: 'information-circle' | 'warning' = 'information-circle', color = '#2563EB') => {
     setModalTitle(title)
@@ -58,6 +68,16 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
   }, [initialLocation])
 
   useEffect(() => { if (visible) { getCurrentLocation() } }, [visible, getCurrentLocation])
+
+  // Auto-zoom/pan the map to the latest marker position
+  useEffect(() => {
+    try {
+      if (!webViewRef.current) return
+      const { latitude, longitude } = markerPosition
+      const js = `try { if (typeof map !== 'undefined') { map.setView([${latitude}, ${longitude}], 16); if (typeof marker !== 'undefined' && marker) { marker.setLatLng([${latitude}, ${longitude}]); } else { marker = L.marker([${latitude}, ${longitude}]).addTo(map); } } } catch (e) {}`
+      webViewRef.current.injectJavaScript(js)
+    } catch {}
+  }, [markerPosition])
 
   const handleMessage = useCallback((message: any) => {
     if (message?.event === 'onMapClicked') {
@@ -109,29 +129,87 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
   }
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
       <View className="flex-1 bg-white">
-        <View className="bg-white px-4 py-4 border-b border-gray-100 shadow-sm">
-          <View className="flex-row items-center justify-between">
-            <TouchableOpacity onPress={onClose} className="p-2">
-              <Ionicons name="close" size={24} color="#666" />
+        <View 
+          className="bg-white border-b border-gray-200 shadow-sm" 
+          style={{ 
+            paddingHorizontal: spacing,
+            paddingVertical: 18,
+          }}
+        >
+          <View className="flex-row items-center">
+            <TouchableOpacity 
+              onPress={onClose} 
+              className="bg-gray-100 items-center justify-center flex-shrink-0"
+              style={{
+                width: isSmallScreen ? 36 : 40,
+                height: isSmallScreen ? 36 : 40,
+                borderRadius: isSmallScreen ? 18 : 20
+              }}
+            >
+              <Ionicons name="close" size={isSmallScreen ? 18 : 20} color="#6B7280" />
             </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-900">Select Location</Text>
-            <TouchableOpacity onPress={handleConfirm} className="p-2" disabled={isLoading}>
+            
+            <View className="flex-1 items-center mx-3">
+              <Text 
+                className="font-bold text-gray-900"
+                style={{ fontSize: isSmallScreen ? 16 : isTablet ? 24 : 20 }}
+                numberOfLines={1}
+              >
+                Select Location
+              </Text>
+              {!isSmallScreen && (
+                <Text 
+                  className="text-gray-500 text-xs mt-0.5"
+                  numberOfLines={1}
+                >
+                  Tap on the map to choose a location
+                </Text>
+              )}
+            </View>
+            
+            <TouchableOpacity 
+              onPress={handleConfirm} 
+              disabled={isLoading || !selectedLocation}
+              className="items-center justify-center flex-shrink-0 shadow-md"
+              style={{
+                minWidth: isSmallScreen ? 70 : 80,
+                paddingHorizontal: isSmallScreen ? 12 : 16,
+                paddingVertical: isSmallScreen ? 8 : 10,
+                borderRadius: isSmallScreen ? 16 : 20,
+                backgroundColor: selectedLocation && !isLoading ? '#2563EB' : '#D1D5DB',
+                shadowColor: selectedLocation ? '#2563EB' : '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: selectedLocation ? 0.3 : 0.1,
+                shadowRadius: 4,
+                elevation: selectedLocation ? 6 : 2
+              }}
+            >
               {isLoading ? (
-                <ActivityIndicator size="small" color="#4A90E2" />
+                <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text className="text-blue-600 font-semibold">Confirm</Text>
+                <Text 
+                  className="font-bold"
+                  style={{ 
+                    color: selectedLocation ? '#FFFFFF' : '#9CA3AF',
+                    fontSize: isSmallScreen ? 13 : 15
+                  }}
+                  numberOfLines={1}
+                >
+                  Confirm
+                </Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
 
-        <View className="flex-1">
+        <View className="flex-1 relative">
           <WebView
-            source={{ html: `<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>Location Picker</title><link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" /><script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script><style>body{margin:0;padding:0}#map{height:100vh;width:100%}</style></head><body><div id=\"map\"></div><script>const map=L.map('map').setView([${markerPosition.latitude},${markerPosition.longitude}],15);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(map);let marker=null;${selectedLocation ? `marker=L.marker([${selectedLocation.latitude},${selectedLocation.longitude}]).addTo(map);marker.bindPopup('Selected Location').openPopup();` : ''}map.on('click',function(e){if(marker){map.removeLayer(marker);}marker=L.marker([e.latlng.lat,e.latlng.lng]).addTo(map);marker.bindPopup('Selected Location').openPopup();const message={event:'onMapClicked',payload:{touchLatLng:{lat:e.latlng.lat,lng:e.latlng.lng}}};window.ReactNativeWebView.postMessage(JSON.stringify(message));});</script></body></html>` }}
+            ref={webViewRef}
+            source={{ html: `<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>Location Picker</title><link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" /><script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script><style>body{margin:0;padding:0}#map{height:100vh;width:100%}.leaflet-control-container{pointer-events:none}.leaflet-control-container .leaflet-control{pointer-events:auto}</style></head><body><div id=\"map\"></div><script>const map=L.map('map').setView([${markerPosition.latitude},${markerPosition.longitude}],15);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(map);let marker=null;${selectedLocation ? `marker=L.marker([${selectedLocation.latitude},${selectedLocation.longitude}]).addTo(map);marker.bindPopup('Selected Location').openPopup();` : ''}map.on('click',function(e){if(marker){map.removeLayer(marker);}marker=L.marker([e.latlng.lat,e.latlng.lng]).addTo(map);marker.bindPopup('Selected Location').openPopup();const message={event:'onMapClicked',payload:{touchLatLng:{lat:e.latlng.lat,lng:e.latlng.lng}}};window.ReactNativeWebView.postMessage(JSON.stringify(message));});</script></body></html>` }}
             onMessage={handleMessage}
-            style={{ flex: 1 }}
+            className="flex-1"
             javaScriptEnabled
             domStorageEnabled
             startInLoadingState
@@ -142,16 +220,146 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
               </View>
             )}
           />
+          
+          {/* Current Location Button - Bottom Right of Map */}
+          <TouchableOpacity
+            onPress={getCurrentLocation}
+            disabled={isGettingLocation}
+            style={{
+              position: 'absolute',
+              bottom: 20,
+              right: 20,
+              width: 56,
+              height: 56,
+              borderRadius: 28,
+              backgroundColor: isGettingLocation ? '#93C5FD' : '#2563EB',
+              alignItems: 'center',
+              justifyContent: 'center',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 20,
+              zIndex: 1000,
+            }}
+            activeOpacity={0.8}
+          >
+            {isGettingLocation ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="locate" size={24} color="#fff" />
+            )}
+          </TouchableOpacity>
+          
+          {/* Floating controls overlay */}
+          <View 
+            className="absolute inset-0"
+            style={{ 
+              pointerEvents: 'box-none',
+              zIndex: 9998 
+            }}
+          >
+
+            {/* Zoom controls */}
+            <View
+              className="absolute bg-white shadow-lg overflow-hidden"
+              style={{
+                top: 20,
+                left: 20, // Move to left side to avoid overlap
+                borderRadius: isSmallScreen ? 6 : 8,
+                elevation: 8
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => {
+                  webViewRef.current?.injectJavaScript('map.zoomIn();')
+                }}
+                className="items-center justify-center border-b border-gray-200"
+                style={{
+                  width: zoomButtonSize,
+                  height: zoomButtonSize
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add" size={zoomIconSize} color="#374151" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  webViewRef.current?.injectJavaScript('map.zoomOut();')
+                }}
+                className="items-center justify-center"
+                style={{
+                  width: zoomButtonSize,
+                  height: zoomButtonSize
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="remove" size={zoomIconSize} color="#374151" />
+              </TouchableOpacity>
+            </View>
+
+          </View>
         </View>
 
-        <View className="bg-blue-50 px-4 py-3 border-t border-blue-100">
-          <View className="flex-row items-center">
-            {isGettingLocation ? (
-              <ActivityIndicator size="small" color="#4A90E2" />
-            ) : (
-              <Ionicons name="information-circle" size={20} color="#4A90E2" />
-            )}
-            <Text className="text-blue-800 ml-2 text-sm">{isGettingLocation ? 'Getting your current location...' : 'Tap on the map to select the incident location'}</Text>
+        {/* Enhanced responsive footer with tips */}
+        <View 
+          className="border-t border-blue-100 bg-blue-50"
+          style={{ 
+            paddingHorizontal: spacing,
+            paddingVertical: 18,
+          }}
+        >
+          <View className="flex-row items-start">
+            <View 
+              className="bg-blue-100 items-center justify-center mt-0.5"
+              style={{
+                width: isSmallScreen ? 18 : 20,
+                height: isSmallScreen ? 18 : 20,
+                borderRadius: isSmallScreen ? 9 : 10,
+                marginRight: isSmallScreen ? 6 : 8
+              }}
+            >
+              <Ionicons name="bulb" size={isSmallScreen ? 9 : 10} color="#2563EB" />
+            </View>
+            <View className="flex-1">
+              <Text 
+                className="text-blue-900 font-medium mb-0.5"
+                style={{ fontSize: isSmallScreen ? 11 : 13 }}
+              >
+                Quick Tips:
+              </Text>
+              <View className="flex-col gap-0.5">
+                <Text 
+                  className="text-blue-800"
+                  style={{ 
+                    fontSize: isSmallScreen ? 9 : 11,
+                    lineHeight: isSmallScreen ? 12 : 14
+                  }}
+                >
+                  • Tap anywhere on the map to select a location
+                </Text>
+                <Text 
+                  className="text-blue-800"
+                  style={{ 
+                    fontSize: isSmallScreen ? 9 : 11,
+                    lineHeight: isSmallScreen ? 12 : 14
+                  }}
+                >
+                  • Use the 📍 button to get your current position
+                </Text>
+                {!isSmallScreen && (
+                  <Text 
+                    className="text-blue-800"
+                    style={{ 
+                      fontSize: 11,
+                      lineHeight: 14
+                    }}
+                  >
+                    • Use +/- buttons to zoom in and out
+                  </Text>
+                )}
+              </View>
+            </View>
           </View>
         </View>
       </View>

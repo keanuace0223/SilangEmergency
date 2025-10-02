@@ -1,6 +1,7 @@
 import { CustomInputProps } from "@/type";
-import React, { useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { useState } from 'react';
+import { TextInput, View } from 'react-native';
+import ScaledText from './ScaledText';
 
 const CustomInputs = ({
     placeholder = 'Enter Text', 
@@ -15,15 +16,16 @@ const CustomInputs = ({
 
   return  (
     <View className="w-full gap-2">
-        <Text 
-          className="font-medium text-base"
+        <ScaledText 
+          baseSize={16}
+          className="font-medium"
           style={{
             marginBottom: 5,
             color: "#4A90E2",
           }}
         >
           {label}
-        </Text>
+        </ScaledText>
 
         <TextInput 
           autoCapitalize="none"
@@ -44,8 +46,9 @@ const CustomInputs = ({
             paddingVertical: 12,
             borderRadius: 8,
             color: '#111827',
+            fontSize: 16
           }}
-          className="text-base"
+          className=""
         />
     </View>
   )

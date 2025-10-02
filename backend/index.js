@@ -1,3 +1,6 @@
+// Load environment variables first
+require('dotenv').config();
+
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
@@ -11,10 +14,12 @@ app.use(cors());
 app.use(bodyParser.json());
 
 const authRoutes = require("./routes/auth");
+const supabaseAuthRoutes = require("./routes/supabase-auth");
 const reportsRoutes = require("./routes/reports");
 const usersRoutes = require("./routes/users");
 
 app.use("/api/auth", authRoutes);
+app.use("/api/supabase-auth", supabaseAuthRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/users", usersRoutes);
 
