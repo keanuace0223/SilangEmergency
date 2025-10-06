@@ -4,7 +4,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "setup-sessions": "node scripts/setup-sessions-supabase.js",
+    "setup-sessions-old": "node scripts/setup-sessions.js",
+    "setup-sessions-manual": "node scripts/setup-sessions.js --manual"
   },
   "keywords": [],
   "author": "",

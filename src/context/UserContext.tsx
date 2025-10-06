@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { getSignedAvatarUrl } from '../lib/supabase';
+import { sessionManager } from '../utils/sessionManager';
 
 // Cache for signed URLs to avoid repeated network calls
 const urlCache = new Map<string, { url: string; expires: number }>();
@@ -8,6 +9,7 @@ const CACHE_DURATION = 23 * 60 * 60 * 1000; // 23 hours (shorter than 24 hour ex
 
 interface User {
   id: string;
+  userid: string;
   name: string;
   email: string;
   barangay: string;
@@ -69,8 +71,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Map the user data to match our User interface
         const mappedUser: User = {
           id: String(parsedUser.id),
+          userid: String(parsedUser.userID || parsedUser.userid || ''),
           name: parsedUser.name,
-          email: parsedUser.userID, // userID is used as email in this system
+          email: parsedUser.email || parsedUser.userID || `${parsedUser.userID}@login.local`, // Use stored email or fallback
           barangay: parsedUser.barangay,
           barangay_position: parsedUser.barangay_position,
           profile_pic: parsedUser.profile_pic || undefined
@@ -102,7 +105,15 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
-    loadUser();
+    const initializeApp = async () => {
+      // Session manager initialization disabled for Supabase-only mode
+      // await sessionManager.initializeFromStorage();
+      
+      // Load user data
+      await loadUser();
+    };
+    
+    initializeApp();
   }, [loadUser]);
 
   const login = useCallback(async (userData: User) => {
@@ -117,6 +128,19 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(async () => {
     try {
+      // Terminate current session
+      if (sessionManager.hasActiveSession()) {
+        try {
+          await sessionManager.terminateSession();
+        } catch (error) {
+          console.warn('Failed to terminate session:', error);
+        }
+      }
+      
+      // Clear session manager
+      await sessionManager.clearSession();
+      
+      // Clear storage
       await AsyncStorage.removeItem('user');
       await AsyncStorage.removeItem('userData');
       await AsyncStorage.removeItem('authToken');

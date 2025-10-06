@@ -2,7 +2,7 @@
   "expo": {
     "name": "Silang Emergency App",
     "slug": "silang_emergency",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/Logo.png",
     "scheme": "silangemergency",

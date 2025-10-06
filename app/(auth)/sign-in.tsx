@@ -14,10 +14,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppModal from '../../components/AppModal';
+import MultiDeviceLoginModal from '../../components/MultiDeviceLoginModal';
 import ScaledText from '../../components/ScaledText';
 import { images } from '../../constants/images';
 import { useUser } from '../../src/context/UserContext';
 import { auth, db } from '../../src/lib/supabase';
+import { sessionManager, type ActiveSession } from '../../src/utils/sessionManager';
 import '../global.css';
 
 export default function SignInScreen() {
@@ -37,6 +39,11 @@ export default function SignInScreen() {
   const [messageText, setMessageText] = useState('');
   const [messageIcon, setMessageIcon] = useState<'information-circle' | 'warning'>('information-circle');
   const [messageIconColor, setMessageIconColor] = useState('#2563EB');
+  
+  // Multi-device login modal
+  const [multiDeviceModalVisible, setMultiDeviceModalVisible] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
+  const [forceLoginLoading] = useState(false);
 
   // Animation values - start visible
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -76,6 +83,104 @@ export default function SignInScreen() {
     }
   }, [loading, spinAnim]);
 
+  // Force login disabled per requirement
+  // removed: handleForceLogin (force login disabled)
+
+  const performLogin = async (userIDValue: string, passwordValue: string, forceSingleSession: boolean = false) => {
+    console.log('Attempting login with:', { userID: userIDValue, password: '***', forceSingleSession });
+
+    // 1) Create a real Supabase session via email alias so RLS works
+    const { data: sessionData, error: aliasErr } = await auth.signInWithUseridAlias(userIDValue, passwordValue);
+    if (aliasErr || !sessionData?.user) {
+      const msg = 'Invalid credentials';
+      setErrorMessage(msg);
+      setMessageTitle('Sign in failed');
+      setMessageText(msg);
+      setMessageIcon('warning');
+      setMessageIconColor('#EF4444');
+      setMessageVisible(true);
+      return;
+    }
+
+    // 2) Load or create profile using the authenticated user id
+    const userId = sessionData.user.id;
+    let { data: profile } = await db.getUser(userId);
+    if (!profile) {
+      const useridAlias = userIDValue;
+      const fallbackName = useridAlias;
+      const upsert = await db.upsertUser({ id: userId, userid: useridAlias, name: fallbackName, barangay: '', barangay_position: '' });
+      profile = upsert.data || null;
+    }
+    if (!profile) {
+      const msg = 'Failed to load user profile.';
+      setErrorMessage(msg);
+      setMessageTitle('Sign in error');
+      setMessageText(msg);
+      setMessageIcon('warning');
+      setMessageIconColor('#EF4444');
+      setMessageVisible(true);
+      return;
+    }
+
+    // 3) Check for existing sessions (strict single-session; no force login)
+    if (!forceSingleSession) {
+      try {
+        const sessionCheck = await sessionManager.checkActiveSessions(userId);
+        if (sessionCheck.sessionCount > 0) {
+          console.log('Multiple active sessions detected:', sessionCheck);
+          setActiveSessions(sessionCheck.activeSessions);
+          // Do not preserve pending creds; force login disabled
+          setMultiDeviceModalVisible(true);
+          // End auth session we just created since login is not allowed
+          try { await auth.signOut(); } catch {}
+          return;
+        }
+      } catch (error) {
+        console.warn('Failed to check sessions, proceeding with login:', error);
+      }
+    }
+
+    // 4) Create session tracking (no force deactivation allowed)
+    try {
+      const created = await sessionManager.createSession(userId, false);
+      if (!created.success && created.existingSessions > 0) {
+        setActiveSessions(await sessionManager.getUserSessions(userId));
+        // Do not preserve pending creds; force login disabled
+        setMultiDeviceModalVisible(true);
+        try { await auth.signOut(); } catch {}
+        return;
+      }
+      sessionManager.startHeartbeat();
+    } catch (error) {
+      console.warn('Failed to create session tracking:', error);
+    }
+
+    // 5) Persist token and user data
+    const accessToken = sessionData.session?.access_token || 'supabase-session';
+    await AsyncStorage.setItem('authToken', accessToken);
+    const persistedUser = {
+      id: profile.id,
+      userID: profile.userid,
+      name: profile.name,
+      email: sessionData.session?.user?.email || `${profile.userid}@login.local`, // Include email for admin check
+      barangay: profile.barangay,
+      barangay_position: profile.barangay_position,
+      profile_pic: profile.profile_pic || null,
+    };
+    
+    console.log('Sign-in - Persisting user data:', persistedUser);
+    console.log('Sign-in - User email for admin check:', persistedUser.email);
+    
+    await AsyncStorage.setItem('userData', JSON.stringify(persistedUser));
+    try { await refreshUser(); } catch {}
+    setSuccessVisible(true);
+  };
+
+  const handleMultiDeviceModalClose = () => {
+    setMultiDeviceModalVisible(false);
+    setActiveSessions([]);
+  };
+
   const handleSignIn = async () => {
     setErrorMessage('');
 
@@ -91,58 +196,7 @@ export default function SignInScreen() {
 
     setLoading(true);
     try {
-      console.log('Attempting login with:', { userID: userID.trim(), password: '***' });
-
-      // 1) Create a real Supabase session via email alias so RLS works
-      const { data: sessionData, error: aliasErr } = await auth.signInWithUseridAlias(userID.trim(), password.trim());
-      if (aliasErr || !sessionData?.user) {
-        const msg = 'Invalid credentials';
-        setErrorMessage(msg);
-        setMessageTitle('Sign in failed');
-        setMessageText(msg);
-        setMessageIcon('warning');
-        setMessageIconColor('#EF4444');
-        setMessageVisible(true);
-        return;
-      }
-
-      // 2) Load or create profile using the authenticated user id
-      const userId = sessionData.user.id;
-      let { data: profile } = await db.getUser(userId);
-      if (!profile) {
-        const useridAlias = userID.trim();
-        const fallbackName = useridAlias;
-        const upsert = await db.upsertUser({ id: userId, userid: useridAlias, name: fallbackName, barangay: '', barangay_position: '' });
-        profile = upsert.data || null;
-      }
-      if (!profile) {
-        const msg = 'Failed to load user profile.';
-        setErrorMessage(msg);
-        setMessageTitle('Sign in error');
-        setMessageText(msg);
-        setMessageIcon('warning');
-        setMessageIconColor('#EF4444');
-        setMessageVisible(true);
-        return;
-      }
-
-      // Persist minimal token surrogate and user data
-      // 3) Persist token (optional for existing app flow)
-      const accessToken = sessionData.session?.access_token || 'supabase-session';
-      await AsyncStorage.setItem('authToken', accessToken);
-      const persistedUser = {
-        id: profile.id,
-        userID: profile.userid,
-        name: profile.name,
-        barangay: profile.barangay,
-        barangay_position: profile.barangay_position,
-        profile_pic: profile.profile_pic || null,
-      };
-      await AsyncStorage.setItem('userData', JSON.stringify(persistedUser));
-      try { await refreshUser(); } catch {}
-      setSuccessVisible(true);
-
-      // End of login flow
+      await performLogin(userID.trim(), password.trim(), false);
     } catch (error) {
       console.error('Login error details:', error);
       let msg = 'Network request failed. Please check your connection and try again.'
@@ -289,10 +343,56 @@ export default function SignInScreen() {
         </ScrollView>
 
       {/* Success Modal */}
-      <AppModal visible={successVisible} onClose={() => { setSuccessVisible(false); router.replace('/(tabs)') }} icon="checkmark-circle" iconColor="#16A34A" title="Signed in" message="You have successfully signed in." actions={[{ label: 'Continue', onPress: () => { setSuccessVisible(false); router.replace('/(tabs)') }, variant: 'primary' }]} />
+      <AppModal
+        visible={successVisible}
+        onClose={async () => {
+          setSuccessVisible(false);
+          try {
+            const userData = await AsyncStorage.getItem('userData');
+            const parsed = userData ? JSON.parse(userData) : null;
+            const adminIds = ['admin1','admin2','admin3'];
+            const userid = parsed?.userID || parsed?.userid || '';
+            const isAdmin = !!userid && adminIds.includes(String(userid));
+            router.replace(isAdmin ? '/(admin)' : '/(tabs)');
+          } catch {
+            router.replace('/(tabs)');
+          }
+        }}
+        icon="checkmark-circle"
+        iconColor="#16A34A"
+        title="Signed in"
+        message="You have successfully signed in."
+        actions={[
+          {
+            label: 'Continue',
+            onPress: async () => {
+              setSuccessVisible(false);
+              try {
+                const userData = await AsyncStorage.getItem('userData');
+                const parsed = userData ? JSON.parse(userData) : null;
+                const adminIds = ['admin1','admin2','admin3'];
+                const userid = parsed?.userID || parsed?.userid || '';
+                const isAdmin = !!userid && adminIds.includes(String(userid));
+                router.replace(isAdmin ? '/(admin)' : '/(tabs)');
+              } catch {
+                router.replace('/(tabs)');
+              }
+            },
+            variant: 'primary'
+          }
+        ]}
+      />
 
       {/* Message/Error Modal */}
       <AppModal visible={messageVisible} onClose={() => setMessageVisible(false)} icon={messageIcon} iconColor={messageIconColor} title={messageTitle} message={messageText || errorMessage || 'Please try again.'} actions={[{ label: 'OK', onPress: () => setMessageVisible(false), variant: 'secondary' }]} />
+
+      {/* Multi-Device Login Modal */}
+      <MultiDeviceLoginModal
+        visible={multiDeviceModalVisible}
+        onClose={handleMultiDeviceModalClose}
+        activeSessions={activeSessions}
+        loading={forceLoginLoading}
+      />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

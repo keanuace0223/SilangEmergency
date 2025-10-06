@@ -1,10 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
+// Lazy import inside functions to avoid expo web issues
 
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+// Debug: Log environment loading
+console.log('🔍 Loading Supabase environment variables...');
+console.log('EXPO_PUBLIC_SUPABASE_URL:', process.env.EXPO_PUBLIC_SUPABASE_URL ? 'LOADED' : 'MISSING');
+console.log('EXPO_PUBLIC_SUPABASE_ANON_KEY:', process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? 'LOADED' : 'MISSING');
+console.log('EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY:', process.env.EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY ? 'LOADED' : 'MISSING');
+
+// Fallback to hardcoded values if environment variables are not loaded
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://bhcecrbyknorjzkjazxu.supabase.co';
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoY2VjcmJ5a25vcmp6a2phenh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyMDYwNDMsImV4cCI6MjA3NDc4MjA0M30.Nfv0vHVk1IyN1gz1Y4mdogL9ChsV0DkiMQivuYnolt4';
 
 if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('❌ Supabase environment variables are missing!');
+  console.error('supabaseUrl:', supabaseUrl);
+  console.error('supabaseAnonKey:', supabaseAnonKey ? 'EXISTS' : 'MISSING');
   throw new Error('Missing Supabase environment variables. Please set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY');
 }
 
@@ -28,6 +39,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 });
 
 const AVATAR_BUCKET = process.env.EXPO_PUBLIC_SUPABASE_AVATAR_BUCKET || 'avatars';
+const REPORTS_BUCKET = process.env.EXPO_PUBLIC_SUPABASE_REPORTS_BUCKET || 'reports';
 
 // Database types
 export interface User {
@@ -273,4 +285,72 @@ export async function deleteAvatar(filePath: string): Promise<{ error?: Error }>
   } catch (e: any) {
     return { error: e };
   }
+}
+
+// Report media storage helpers
+async function uriToArrayBuffer(fileUri: string): Promise<ArrayBuffer> {
+  // Try simple fetch first (works for file:// on iOS and many Android cases)
+  try {
+    const res = await fetch(fileUri);
+    return await res.arrayBuffer();
+  } catch {}
+  // Fallback to Expo FileSystem for content:// and other URIs
+  try {
+    const FileSystem = await import('expo-file-system');
+    const base64 = await (FileSystem as any).readAsStringAsync(fileUri, { encoding: 'base64' });
+    const blob = await fetch(`data:application/octet-stream;base64,${base64}`).then(r => r.blob());
+    return await blob.arrayBuffer();
+  } catch (e) {
+    throw e;
+  }
+}
+
+export async function uploadReportMedia(userId: string, fileUri: string): Promise<{ url?: string; path?: string; error?: Error }>{
+  try {
+    const arrayBuffer = await uriToArrayBuffer(fileUri);
+    const uriLower = fileUri.toLowerCase();
+    const extMatch = uriLower.match(/\.([a-z0-9]+)(?:\?|#|$)/);
+    const fileExt = (extMatch && extMatch[1]) || 'jpg';
+    const contentType = fileExt === 'png' ? 'image/png' : fileExt === 'webp' ? 'image/webp' : 'image/jpeg';
+    const filePath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(REPORTS_BUCKET)
+      .upload(filePath, arrayBuffer, {
+        cacheControl: '86400',
+        upsert: true,
+        contentType,
+      });
+    if (uploadError) return { error: uploadError as any };
+
+    // Prefer public URL if bucket is public; fallback to signed URL
+    const { data: pub } = supabase.storage.from(REPORTS_BUCKET).getPublicUrl(filePath);
+    if (pub?.publicUrl) {
+      return { url: pub.publicUrl, path: filePath };
+    }
+    const { data: signed, error: signedErr } = await supabase.storage
+      .from(REPORTS_BUCKET)
+      .createSignedUrl(filePath, 7 * 24 * 60 * 60); // 7 days
+    if (signedErr) return { path: filePath };
+    return { url: signed?.signedUrl, path: filePath };
+  } catch (e: any) {
+    return { error: e };
+  }
+}
+
+export async function uploadMultipleReportMedia(userId: string, fileUris: string[]): Promise<{ urls: string[]; errors: string[] }>{
+  const results = await Promise.allSettled(fileUris.map(uri => uploadReportMedia(userId, uri)));
+  const urls: string[] = [];
+  const errors: string[] = [];
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      if (r.value.url) urls.push(r.value.url);
+      else if (r.value.path) urls.push(r.value.path);
+      else if (r.value.error) errors.push((r.value.error as any).message || String(r.value.error));
+      else errors.push('Unknown upload error');
+    } else {
+      errors.push(r.reason?.message || 'Upload failed');
+    }
+  }
+  return { urls, errors };
 }

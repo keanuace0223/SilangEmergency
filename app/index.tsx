@@ -1,13 +1,29 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Redirect } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
+import { useUser } from '../src/context/UserContext';
 
 export default function Index() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const { user } = useUser();
+  const [isAdminByStorage, setIsAdminByStorage] = useState<boolean | null>(null);
 
   useEffect(() => {
     checkAuthStatus();
+    // Also precompute admin from storage to avoid context race
+    (async () => {
+      try {
+        const userData = await AsyncStorage.getItem('userData');
+        if (!userData) { setIsAdminByStorage(false); return; }
+        const parsed = JSON.parse(userData);
+        const adminUserIds = ['admin1','admin2','admin3'];
+        const userid = parsed?.userID || parsed?.userid || '';
+        setIsAdminByStorage(!!userid && adminUserIds.includes(String(userid)));
+      } catch {
+        setIsAdminByStorage(false);
+      }
+    })();
   }, []);
 
   const checkAuthStatus = async () => {
@@ -31,9 +47,12 @@ export default function Index() {
     );
   }
 
-  // Redirect based on authentication status
+  // Redirect based on authentication status and role
   if (isAuthenticated) {
-    return <Redirect href="/(tabs)" />;
+    const adminUserIds = ['admin1','admin2','admin3'];
+    const isAdminFromContext = !!(user?.userid && adminUserIds.includes(user.userid));
+    const isAdmin = isAdminFromContext || isAdminByStorage === true;
+    return <Redirect href={isAdmin ? '/(admin)' : '/(tabs)'} />;
   } else {
     return <Redirect href="/(auth)/sign-in" />;
   }

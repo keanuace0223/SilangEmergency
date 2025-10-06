@@ -3,6 +3,7 @@ import { Tabs, usePathname, useRouter } from 'expo-router';
 import { DeviceEventEmitter, Linking, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ScaledText from '../../components/ScaledText';
+import { useUser } from '../../src/context/UserContext';
 
 const TabsLayout = () => {
   const TAB_BAR_SHADOW = {
@@ -15,12 +16,25 @@ const TabsLayout = () => {
     elevation: 6,
   };
 
-
+  const { user } = useUser();
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const router = useRouter();
   const TAB_BAR_HEIGHT = 64;
   const FLOAT_MARGIN = 20;
+
+  // Check if user is admin via known admin userids and/or email aliases
+  const adminUserIds = ['admin1', 'admin2', 'admin3'];
+  const adminEmails = adminUserIds.map((u) => `${u}@login.local`);
+  const isAdmin = Boolean(
+    (user?.userid && adminUserIds.includes(user.userid)) ||
+    (user?.email && adminEmails.includes(user.email))
+  );
+  
+  // Debug logging for admin check
+  console.log('Tab Layout - User:', user);
+  console.log('Tab Layout - User Email:', user?.email);
+  console.log('Tab Layout - Is Admin:', isAdmin);
 
   // derive booleans inline in handlers to avoid unused warnings
   // Show FABs on all tabs to avoid path-mismatch issues across devices
@@ -63,40 +77,47 @@ const TabsLayout = () => {
             minWidth: 320,
           }}
         >
-          {state.routes.map((route: any, index: number) => {
-            const isFocused = state.index === index;
-            const color = isFocused ? activeColor : inactiveColor;
-            const onPress = () => {
-              const event = navigation.emit({
-                type: 'tabPress',
-                target: route.key,
-                canPreventDefault: true,
-              });
-              if (!isFocused && !event.defaultPrevented) {
-                navigation.navigate(route.name);
-              }
-            };
-            return (
-              <TouchableOpacity
-                key={route.key}
-                onPress={onPress}
-                activeOpacity={0.85}
-                style={{
-                  flex: 1,
-                  height: TAB_BAR_HEIGHT - 16,
-                  marginVertical: 8,
-                  marginHorizontal: 4,
-                  borderRadius: 22,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isFocused ? '#E8F1FD' : 'transparent',
-                }}
-              >
-                <Ionicons name={iconMap[route.name] as any} size={22} color={color} />
-                <ScaledText baseSize={11} style={{ marginTop: 4, fontWeight: '700', color }}>{route.name.charAt(0).toUpperCase() + route.name.slice(1)}</ScaledText>
-              </TouchableOpacity>
-            );
-          })}
+          {(() => {
+            const desiredOrder = ['index', 'reports', 'drafts', 'profile'];
+            const orderedRoutes = [...state.routes].sort((a, b) => desiredOrder.indexOf(a.name) - desiredOrder.indexOf(b.name));
+            return orderedRoutes.map((route: any) => {
+              const index = state.routes.findIndex((r: any) => r.key === route.key);
+              const isFocused = state.index === index;
+              const color = isFocused ? activeColor : inactiveColor;
+              const onPress = () => {
+                const event = navigation.emit({
+                  type: 'tabPress',
+                  target: route.key,
+                  canPreventDefault: true,
+                });
+                if (!isFocused && !event.defaultPrevented) {
+                  navigation.navigate(route.name);
+                }
+              };
+              const options = descriptors[route.key]?.options || {};
+              const label = (options.title as string) || (options.tabBarLabel as string) || route.name;
+              return (
+                <TouchableOpacity
+                  key={route.key}
+                  onPress={onPress}
+                  activeOpacity={0.85}
+                  style={{
+                    flex: 1,
+                    height: TAB_BAR_HEIGHT - 16,
+                    marginVertical: 8,
+                    marginHorizontal: 4,
+                    borderRadius: 22,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isFocused ? '#E8F1FD' : 'transparent',
+                  }}
+                >
+                  <Ionicons name={iconMap[route.name] as any} size={22} color={color} />
+                  <ScaledText baseSize={11} style={{ marginTop: 4, fontWeight: '700', color }}>{label}</ScaledText>
+                </TouchableOpacity>
+              );
+            });
+          })()}
         </View>
       </View>
     );
@@ -111,27 +132,22 @@ const TabsLayout = () => {
         tabBarInactiveTintColor: '#8E8E93',
         headerShown: false,
     }}>
-        <Tabs.Screen
+          <Tabs.Screen
             name="index"
             options={{ title: 'Home' }}
-        />
-
-        <Tabs.Screen
+          />
+          <Tabs.Screen
             name="reports"
             options={{ title: 'Reports' }}
-        />
-
-        
-     <Tabs.Screen
+          />
+          <Tabs.Screen
             name="drafts"
             options={{ title: 'Drafts' }}
-        />   
-
-         <Tabs.Screen
+          />
+          <Tabs.Screen
             name="profile"
             options={{ title: 'Profile' }}
-        />
-
+          />
       </Tabs>
 
       {showFloatingActions && (
@@ -144,22 +160,25 @@ const TabsLayout = () => {
             <Ionicons name="call" size={22} color="#fff" />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => {
-              if (pathname?.endsWith('/index')) {
-                DeviceEventEmitter.emit('OPEN_HOME_ADD');
-              } else if (pathname?.includes('/reports')) {
-                router.push({ pathname: '/(tabs)/reports', params: { openAdd: '1' } })
-              } else {
-                // For other tabs, default to reports add for now
-                router.push({ pathname: '/(tabs)/reports', params: { openAdd: '1' } })
-              }
-            }}
-            style={{ position: 'absolute', right: 20, bottom: (TAB_BAR_HEIGHT + FLOAT_MARGIN) + insets.bottom, width: 56, height: 56, borderRadius: 28, backgroundColor: '#4A90E2', alignItems: 'center', justifyContent: 'center', elevation: 8 }}
-          >
-            <Ionicons name="add" size={26} color="#fff" />
-          </TouchableOpacity>
+          {/* Only show add report FAB for non-admin users */}
+          {!isAdmin && (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
+                if (pathname?.endsWith('/index')) {
+                  DeviceEventEmitter.emit('OPEN_HOME_ADD');
+                } else if (pathname?.includes('/reports')) {
+                  router.push({ pathname: '/(tabs)/reports', params: { openAdd: '1' } })
+                } else {
+                  // For other tabs, default to reports add for now
+                  router.push({ pathname: '/(tabs)/reports', params: { openAdd: '1' } })
+                }
+              }}
+              style={{ position: 'absolute', right: 20, bottom: (TAB_BAR_HEIGHT + FLOAT_MARGIN) + insets.bottom, width: 56, height: 56, borderRadius: 28, backgroundColor: '#4A90E2', alignItems: 'center', justifyContent: 'center', elevation: 8 }}
+            >
+              <Ionicons name="add" size={26} color="#fff" />
+            </TouchableOpacity>
+          )}
         </>
       )}
     </View>

@@ -17,11 +17,15 @@ const authRoutes = require("./routes/auth");
 const supabaseAuthRoutes = require("./routes/supabase-auth");
 const reportsRoutes = require("./routes/reports");
 const usersRoutes = require("./routes/users");
+const sessionsRoutes = require("./routes/sessions");
+const adminRoutes = require("./routes/admin");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/supabase-auth", supabaseAuthRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/sessions", sessionsRoutes);
+app.use("/api/admin", adminRoutes);
 
 
 

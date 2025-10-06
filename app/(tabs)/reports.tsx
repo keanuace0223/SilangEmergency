@@ -12,6 +12,7 @@ import { images } from '../../constants/images'
 import { api } from '../../src/api/client'
 import { useSettings } from '../../src/context/SettingsContext'
 import { useUser } from '../../src/context/UserContext'
+import { uploadMultipleReportMedia } from '../../src/lib/supabase'
 
 const Reports = () => {
   const { textScale } = useSettings()
@@ -216,7 +217,22 @@ const Reports = () => {
         showModal('Not signed in', 'Please sign in again to submit a report.', 'warning', '#EF4444')
         return
       }
-      const mediaUrls = media.map(m => m.uri)
+      // Upload selected media to Supabase Storage first (images only for stability)
+      let mediaUrls: string[] = []
+      if (media.length > 0) {
+        const imageUris = media.filter(m => (m as any).type !== 'video').map(m => m.uri)
+        const skippedVideos = media.length - imageUris.length
+        const { urls, errors } = await uploadMultipleReportMedia(user.id, imageUris)
+        if (errors.length > 0 && urls.length === 0) {
+          const detail = errors.join('\n')
+          showModal('Upload error', `Failed to upload media.\n${detail}`, 'warning', '#EF4444')
+          return
+        }
+        mediaUrls = urls
+        if (skippedVideos > 0) {
+          showModal('Note', `${skippedVideos} video${skippedVideos > 1 ? 's' : ''} skipped for upload. Images uploaded successfully.`, 'information-circle', '#2563EB')
+        }
+      }
       const reportData = {
         incidentType,
         location: selectedLocation ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}` : location,

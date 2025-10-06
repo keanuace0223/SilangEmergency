@@ -14,6 +14,7 @@ import { images } from '../../constants/images'
 import { api } from '../../src/api/client'
 import { useSettings } from '../../src/context/SettingsContext'
 import { useUser } from '../../src/context/UserContext'
+import { uploadMultipleReportMedia } from '../../src/lib/supabase'
 
 const Home = () => {
   const insets = useSafeAreaInsets()
@@ -106,7 +107,7 @@ const Home = () => {
   const handlePickImages = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (perm.status !== 'granted') return
-    const result = await ImagePicker.launchImageLibraryAsync({ allowsMultipleSelection: true, mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 })
+    const result = await ImagePicker.launchImageLibraryAsync({ allowsMultipleSelection: true, mediaTypes: ImagePicker.MediaTypeOptions.All, quality: 0.8 })
     if (!result.canceled) {
       const assets = 'assets' in result ? result.assets : []
       const newItems = assets.map(a => ({ uri: a.uri }))
@@ -132,12 +133,28 @@ const Home = () => {
     }
     setIsSubmitting(true)
     try {
+      // Upload media first (images only for now)
+      let mediaUrls: string[] = []
+      if (media.length > 0 && user?.id) {
+        const imageUris = media.filter((m: { uri: string; type?: string }) => m.type !== 'video').map((m: { uri: string }) => m.uri)
+        const skippedVideos = media.length - imageUris.length
+        const { urls, errors } = await uploadMultipleReportMedia(user.id, imageUris)
+        if (errors.length > 0 && urls.length === 0) {
+          const detail = errors.join('\n')
+          showModal('Upload error', `Failed to upload media.\n${detail}`, 'warning', '#EF4444')
+          return
+        }
+        mediaUrls = urls
+        if (skippedVideos > 0) {
+          showModal('Note', `${skippedVideos} video${skippedVideos > 1 ? 's' : ''} skipped for upload. Images uploaded successfully.`, 'information-circle', '#2563EB')
+        }
+      }
       const payload = {
         incidentType,
         location: location || `${selectedLocation?.latitude?.toFixed(4)}, ${selectedLocation?.longitude?.toFixed(4)}`,
         urgency,
         description,
-        mediaUrls: media.map((m: { uri: string; type?: string }) => m.uri),
+        mediaUrls,
       }
       if (!user?.id) { showModal('Not signed in', 'Please sign in again to submit a report.', 'warning', '#EF4444'); return }
       await api.reports.create(payload, user.id)
