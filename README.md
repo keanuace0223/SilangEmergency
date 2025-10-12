@@ -1,50 +1,184 @@
-# Welcome to your Expo app 👋
+# Silang Emergency App 🚨
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A comprehensive emergency reporting and management system for Silang Disaster Risk Reduction and Management Office (DRRMO). Built with React Native (Expo), Node.js, and Supabase.
 
-## Get started
+## Features
 
-1. Install dependencies
+- 📱 **Emergency Reporting**: Real-time incident reporting with location tracking
+- 👥 **User Management**: Secure authentication with Supabase
+- 🗺️ **Location Services**: Interactive map for incident location selection
+- 📊 **Admin Dashboard**: Comprehensive management interface for DRRMO staff
+- 🔐 **Security**: Row Level Security (RLS) policies and secure session management
+- 📈 **Scalable Architecture**: Optimized for high performance and scalability
 
+## Tech Stack
+
+### Frontend
+- **React Native** with Expo
+- **TypeScript** for type safety
+- **NativeWind** (TailwindCSS) for styling
+- **Expo Router** for navigation
+
+### Backend
+- **Node.js** with Express
+- **Supabase** for database and authentication
+- **PostgreSQL** with optimized indexes
+- **JWT** for secure token management
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+ and npm
+- Expo CLI
+- Supabase account
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd SilangEmergency
+   ```
+
+2. **Install frontend dependencies**
    ```bash
    npm install
    ```
 
-2. Start the app
+3. **Install backend dependencies**
+   ```bash
+   cd backend
+   npm install
+   cd ..
+   ```
 
+4. **Set up environment variables**
+   
+   Create a `.env` file in the backend directory:
+   ```env
+   SUPABASE_URL=your_supabase_url
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+   JWT_SECRET=your_jwt_secret
+   PORT=4001
+   HOST=0.0.0.0
+   ```
+
+5. **Set up Expo environment variables**
+   
+   Create a `.env` file in the root directory:
+   ```env
+   EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+   ```
+
+6. **Run database migrations**
+   ```bash
+   # Execute SQL files in backend/sql/ in order (01 through 05)
+   ```
+
+### Running the App
+
+1. **Start the backend server**
+   ```bash
+   cd backend
+   npm start
+   ```
+
+2. **Start the Expo development server**
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+3. **Open the app**
+   - Press `a` for Android emulator
+   - Press `i` for iOS simulator
+   - Scan QR code with Expo Go app for physical device
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Project Structure
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+```
+SilangEmergency/
+├── app/                      # Frontend screens
+│   ├── (admin)/             # Admin dashboard screens
+│   ├── (auth)/              # Authentication screens
+│   └── (tabs)/              # Main app tabs
+├── backend/                  # Backend API
+│   ├── config/              # Configuration files
+│   ├── routes/              # API route handlers
+│   ├── sql/                 # Database migrations
+│   ├── scripts/             # Setup scripts
+│   └── utils/               # Shared utilities
+├── components/              # Reusable React components
+├── src/                     # Core application logic
+│   ├── api/                 # API client
+│   ├── context/             # React context providers
+│   ├── lib/                 # Supabase client
+│   └── utils/               # Utility functions
+└── constants/               # App constants
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Recent Optimizations ⚡
 
-## Learn more
+The app has been optimized for scalability and performance:
 
-To learn more about developing your project with Expo, look at the following resources:
+- ✅ **Backend optimizations**: Shared validation utilities, pagination limits, error handling
+- ✅ **Frontend optimizations**: Removed dead code, optimized context providers
+- ✅ **Database optimizations**: Strategic indexes for common query patterns
+- ✅ **Code cleanup**: Removed legacy code and unnecessary files
+- ✅ **Security improvements**: Input validation, size limits, RLS policies
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+See [OPTIMIZATION_SUMMARY.md](./OPTIMIZATION_SUMMARY.md) for detailed information.
 
-## Join the community
+## API Endpoints
 
-Join our community of developers creating universal apps.
+### Authentication
+- `POST /api/supabase-auth/signin` - User login
+- `POST /api/supabase-auth/signup` - User registration
+- `POST /api/supabase-auth/signout` - User logout
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+### Reports
+- `GET /api/reports` - Get user's reports
+- `POST /api/reports` - Create new report
+- `PUT /api/reports/:id` - Update report
+
+### Users
+- `GET /api/users/:id` - Get user profile
+- `PUT /api/users/:id` - Update user profile
+
+### Admin
+- `GET /api/admin/users` - Get all users (paginated)
+- `POST /api/admin/users` - Create new user
+- `GET /api/admin/reports` - Get all reports (paginated)
+- `GET /api/admin/stats` - Get dashboard statistics
+
+### Health Check
+- `GET /health` - Server health status
+
+## Performance
+
+- **Pagination**: Max 100 items per page
+- **Caching**: Avatar URLs cached for 23 hours
+- **Indexes**: Optimized database queries
+- **Request Limits**: 10MB body size limit
+
+## Documentation
+
+- [Admin User Management](./docs/ADMIN_USER_MANAGEMENT.md)
+- [Multi-Device Login Prevention](./docs/MULTI_DEVICE_LOGIN_PREVENTION.md)
+- [Optimization Summary](./OPTIMIZATION_SUMMARY.md)
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License.
+
+## Support
+
+For questions or issues, please contact the Silang DRRMO development team.

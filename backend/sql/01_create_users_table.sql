@@ -11,9 +11,11 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create index for faster lookups
+-- Create indexes for faster lookups and common query patterns
 CREATE INDEX IF NOT EXISTS idx_users_userid ON users(userid);
 CREATE INDEX IF NOT EXISTS idx_users_barangay ON users(barangay);
+CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at DESC); -- For pagination
+CREATE INDEX IF NOT EXISTS idx_users_name ON users(name); -- For search by name
 
 -- Enable Row Level Security
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;

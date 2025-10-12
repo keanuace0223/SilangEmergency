@@ -61,43 +61,36 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadUser = useCallback(async () => {
     try {
-      console.log('Loading user data...');
       const userData = await AsyncStorage.getItem('userData');
-      console.log('UserData from storage:', userData);
       
       if (userData) {
         const parsedUser = JSON.parse(userData);
-        console.log('Parsed user:', parsedUser);
-        // Map the user data to match our User interface
         const mappedUser: User = {
           id: String(parsedUser.id),
           userid: String(parsedUser.userID || parsedUser.userid || ''),
           name: parsedUser.name,
-          email: parsedUser.email || parsedUser.userID || `${parsedUser.userID}@login.local`, // Use stored email or fallback
+          email: parsedUser.email || parsedUser.userID || `${parsedUser.userID}@login.local`,
           barangay: parsedUser.barangay,
           barangay_position: parsedUser.barangay_position,
           profile_pic: parsedUser.profile_pic || undefined
         };
-        // Set user immediately with storage path, then lazy load signed URL
         setUser(mappedUser);
         
-        // If profile_pic looks like a storage path, lazy load the signed URL in background
+        // Lazy load signed URL in background for storage paths
         if (parsedUser.profile_pic && typeof parsedUser.profile_pic === 'string' && parsedUser.profile_pic.includes('/')) {
-          // Don't await - load in background to avoid blocking UI
           getCachedSignedUrl(parsedUser.profile_pic).then(signedUrl => {
             if (signedUrl) {
               setUser(prevUser => prevUser ? { ...prevUser, profile_pic: signedUrl } : prevUser);
             }
-          }).catch(error => {
-            console.warn('Background profile pic loading failed:', error);
+          }).catch(() => {
+            // Silent fail for profile pic loading
           });
         }
       } else {
-        console.log('No user data found in storage');
         setUser(null);
       }
     } catch (error) {
-      console.error('Error loading user:', error);
+      if (__DEV__) console.error('Error loading user:', error);
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -106,8 +99,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const initializeApp = async () => {
-      // Session manager initialization disabled for Supabase-only mode
-      // await sessionManager.initializeFromStorage();
+      // Initialize and validate session manager
+      await sessionManager.initialize();
       
       // Load user data
       await loadUser();
@@ -137,13 +130,24 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
       
+      // Sign out from Supabase
+      try {
+        const { auth } = await import('../lib/supabase');
+        await auth.signOut();
+      } catch (error) {
+        console.warn('Failed to sign out from Supabase:', error);
+      }
+      
       // Clear session manager
       await sessionManager.clearSession();
       
-      // Clear storage
+      // Clear all storage
       await AsyncStorage.removeItem('user');
       await AsyncStorage.removeItem('userData');
       await AsyncStorage.removeItem('authToken');
+      await AsyncStorage.removeItem('sessionId');
+      await AsyncStorage.removeItem('sessionToken');
+      
       setUser(null);
     } catch (error) {
       console.error('Error logging out:', error);

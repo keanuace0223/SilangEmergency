@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { supabaseAdmin } = require("../config/supabase");
+const { isValidUUID } = require("../utils/validation");
 
 // GET /api/reports
 router.get("/", async (req, res) => {
@@ -12,8 +13,7 @@ router.get("/", async (req, res) => {
       return res.status(400).json({ message: "user_id parameter is required" });
     }
     
-    // Check if userId is a UUID (starts with letter and has dashes) or a userid string
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId);
+    const isUUID = isValidUUID(userId);
     
     let reports;
     
@@ -68,8 +68,7 @@ router.get("/count/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     
-    // Check if userId is a UUID or a userid string
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId);
+    const isUUID = isValidUUID(userId);
     
     let actualUserId = userId;
     

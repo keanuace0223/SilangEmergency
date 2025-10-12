@@ -180,9 +180,46 @@ class SessionManager {
     }
   }
 
-  // Initialize from storage
+  // Initialize from storage and validate session
   async initialize(): Promise<void> {
     this.currentSessionId = (await AsyncStorage.getItem('sessionId')) || null;
+    
+    // If we have a session ID, validate it's still active
+    if (this.currentSessionId) {
+      try {
+        // Check both our custom session and Supabase auth session
+        const [sessionData, authSession] = await Promise.all([
+          supabase
+            .from('user_sessions')
+            .select('id, is_active, expires_at')
+            .eq('id', this.currentSessionId)
+            .single(),
+          supabase.auth.getSession()
+        ]);
+        
+        const { data, error } = sessionData;
+        const { data: authData } = authSession;
+        
+        // If session doesn't exist, is inactive, expired, or Supabase session is invalid, clear it
+        if (error || !data || !data.is_active || new Date(data.expires_at) < new Date() || !authData?.session) {
+          console.log('Stored session is invalid, clearing...');
+          this.currentSessionId = null;
+          this.sessionToken = null;
+          await AsyncStorage.removeItem('sessionId');
+          // Also clear auth token if Supabase session is invalid
+          if (!authData?.session) {
+            await AsyncStorage.removeItem('authToken');
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to validate session:', error);
+        // On error, clear the session to be safe
+        this.currentSessionId = null;
+        this.sessionToken = null;
+        await AsyncStorage.removeItem('sessionId');
+        await AsyncStorage.removeItem('authToken');
+      }
+    }
   }
 
   // Check if user has active session
@@ -193,8 +230,28 @@ class SessionManager {
   // Clear all session data
   async clearSession(): Promise<void> {
     this.sessionToken = null;
+    this.currentSessionId = null;
     this.stopHeartbeat();
     await AsyncStorage.removeItem('sessionToken');
+    await AsyncStorage.removeItem('sessionId');
+  }
+
+  // Clean up orphaned sessions for a user (useful when app is deleted/reinstalled)
+  async cleanupOrphanedSessions(userId: string): Promise<void> {
+    try {
+      // Deactivate all sessions for this user that are older than 1 hour
+      // This helps clean up sessions from deleted apps
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      
+      await supabase
+        .from('user_sessions')
+        .update({ is_active: false })
+        .eq('user_id', userId)
+        .lt('last_activity', oneHourAgo)
+        .eq('is_active', true);
+    } catch (error) {
+      console.warn('Failed to cleanup orphaned sessions:', error);
+    }
   }
 
   // Get user sessions

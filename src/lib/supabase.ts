@@ -2,20 +2,11 @@ import { createClient } from '@supabase/supabase-js';
 // Lazy import inside functions to avoid expo web issues
 
 
-// Debug: Log environment loading
-console.log('🔍 Loading Supabase environment variables...');
-console.log('EXPO_PUBLIC_SUPABASE_URL:', process.env.EXPO_PUBLIC_SUPABASE_URL ? 'LOADED' : 'MISSING');
-console.log('EXPO_PUBLIC_SUPABASE_ANON_KEY:', process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? 'LOADED' : 'MISSING');
-console.log('EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY:', process.env.EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY ? 'LOADED' : 'MISSING');
-
-// Fallback to hardcoded values if environment variables are not loaded
+// Environment variables with fallback
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://bhcecrbyknorjzkjazxu.supabase.co';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoY2VjcmJ5a25vcmp6a2phenh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyMDYwNDMsImV4cCI6MjA3NDc4MjA0M30.Nfv0vHVk1IyN1gz1Y4mdogL9ChsV0DkiMQivuYnolt4';
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('❌ Supabase environment variables are missing!');
-  console.error('supabaseUrl:', supabaseUrl);
-  console.error('supabaseAnonKey:', supabaseAnonKey ? 'EXISTS' : 'MISSING');
   throw new Error('Missing Supabase environment variables. Please set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY');
 }
 

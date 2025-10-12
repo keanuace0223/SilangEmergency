@@ -45,19 +45,52 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
   const getCurrentLocation = React.useCallback(async () => {
     try {
       setIsGettingLocation(true)
+      
+      // Check permissions first
       const { status } = await Location.requestForegroundPermissionsAsync()
       if (status !== 'granted') {
         showModal('Permission denied', 'Location permission is required to use this feature', 'warning', '#EF4444')
         return
       }
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
-      const newPosition = { latitude: location.coords.latitude, longitude: location.coords.longitude }
-      setMarkerPosition(newPosition)
-      if (initialLocation) {
-        setSelectedLocation(initialLocation)
-        setMarkerPosition(initialLocation)
-      } else {
-        setSelectedLocation(newPosition)
+
+      // Try to get last known position first for instant feedback
+      try {
+        const lastKnown = await Location.getLastKnownPositionAsync()
+        if (lastKnown) {
+          const quickPosition = { latitude: lastKnown.coords.latitude, longitude: lastKnown.coords.longitude }
+          setMarkerPosition(quickPosition)
+          if (!initialLocation) {
+            setSelectedLocation(quickPosition)
+          }
+        }
+      } catch {
+        console.log('No cached location available')
+      }
+
+      // Get current location with timeout for faster response
+      const locationPromise = Location.getCurrentPositionAsync({ 
+        accuracy: Location.Accuracy.High,
+        timeInterval: 5000,
+        distanceInterval: 0,
+      })
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Location timeout')), 10000)
+      )
+
+      try {
+        const location = await Promise.race([locationPromise, timeoutPromise]) as Location.LocationObject
+        const newPosition = { latitude: location.coords.latitude, longitude: location.coords.longitude }
+        setMarkerPosition(newPosition)
+        if (initialLocation) {
+          setSelectedLocation(initialLocation)
+          setMarkerPosition(initialLocation)
+        } else {
+          setSelectedLocation(newPosition)
+        }
+      } catch {
+        // If timeout, keep the last known position if we have it
+        console.log('Location fetch timed out, using cached position')
       }
     } catch (error) {
       console.error('Error getting location:', error)

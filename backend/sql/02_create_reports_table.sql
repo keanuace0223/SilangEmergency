@@ -12,10 +12,13 @@ CREATE TABLE IF NOT EXISTS reports (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create indexes for faster lookups
+-- Create indexes for faster lookups and common query patterns
 CREATE INDEX IF NOT EXISTS idx_reports_user_id ON reports(user_id);
-CREATE INDEX IF NOT EXISTS idx_reports_incident_datetime ON reports(incident_datetime);
+CREATE INDEX IF NOT EXISTS idx_reports_incident_datetime ON reports(incident_datetime DESC); -- DESC for sorting
 CREATE INDEX IF NOT EXISTS idx_reports_urgency ON reports(urgency_tag);
+CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at DESC); -- For pagination
+CREATE INDEX IF NOT EXISTS idx_reports_user_datetime ON reports(user_id, incident_datetime DESC); -- Composite for user's reports sorted by date
+CREATE INDEX IF NOT EXISTS idx_reports_incident_type ON reports(incident_type); -- For filtering by incident type
 
 -- Enable Row Level Security
 ALTER TABLE reports ENABLE ROW LEVEL SECURITY;

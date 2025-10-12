@@ -4,7 +4,7 @@ import * as Location from 'expo-location'
 import * as ImagePicker from 'expo-image-picker'
  
 import React from 'react'
-import { ActivityIndicator, Dimensions, FlatList, Image, KeyboardAvoidingView, Linking, Modal, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native'
+import { ActivityIndicator, DeviceEventEmitter, Dimensions, FlatList, Image, KeyboardAvoidingView, Linking, Modal, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 import LocationPicker from '../../components/LocationPicker'
@@ -15,6 +15,7 @@ import { api } from '../../src/api/client'
 import { useSettings } from '../../src/context/SettingsContext'
 import { useUser } from '../../src/context/UserContext'
 import { uploadMultipleReportMedia } from '../../src/lib/supabase'
+import { compressImage } from '../../src/utils/imageOptimizer'
 
 const Home = () => {
   const insets = useSafeAreaInsets()
@@ -40,8 +41,9 @@ const Home = () => {
   const [location, setLocation] = React.useState('')
   const [urgency, setUrgency] = React.useState<'Low' | 'Moderate' | 'High' | ''>('')
   const [description, setDescription] = React.useState('')
-  const [media, setMedia] = React.useState<{ uri: string; type?: string }[]>([])
+  const [media, setMedia] = React.useState<{ uri: string; type?: string; isLoading?: boolean }[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [isOptimizingImages, setIsOptimizingImages] = React.useState(false)
 
   const [reports, setReports] = React.useState<any[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
@@ -57,6 +59,18 @@ const Home = () => {
   const [modalMessage, setModalMessage] = React.useState('')
   const [modalIcon, setModalIcon] = React.useState<'checkmark-circle' | 'warning' | 'information-circle'>('information-circle')
   const [modalIconColor, setModalIconColor] = React.useState('#2563EB')
+  const [showConfirmSubmit, setShowConfirmSubmit] = React.useState(false)
+  const [showCallConfirm, setShowCallConfirm] = React.useState(false)
+
+  // Listen for add button press from tab bar (handle all tabs)
+  React.useEffect(() => {
+    const subscriptions = [
+      DeviceEventEmitter.addListener('OPEN_HOME_ADD', () => setShowAdd(true)),
+      DeviceEventEmitter.addListener('OPEN_DRAFTS_ADD', () => setShowAdd(true)),
+      DeviceEventEmitter.addListener('OPEN_PROFILE_ADD', () => setShowAdd(true)),
+    ]
+    return () => subscriptions.forEach(sub => sub.remove())
+  }, [])
 
   const showModal = (title: string, message: string, icon: 'checkmark-circle' | 'warning' | 'information-circle', color: string) => {
     setModalTitle(title)
@@ -89,8 +103,32 @@ const Home = () => {
       setIsLocating(true)
       const { status } = await Location.requestForegroundPermissionsAsync()
       if (status !== 'granted') return
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
-      setCoords({ latitude: location.coords.latitude, longitude: location.coords.longitude })
+      
+      // Try last known position first for instant feedback
+      try {
+        const lastKnown = await Location.getLastKnownPositionAsync()
+        if (lastKnown) {
+          setCoords({ latitude: lastKnown.coords.latitude, longitude: lastKnown.coords.longitude })
+        }
+      } catch {
+        // ignore if no cached location
+      }
+      
+      // Get current location with timeout
+      const locationPromise = Location.getCurrentPositionAsync({ 
+        accuracy: Location.Accuracy.High,
+        timeInterval: 5000,
+      })
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('timeout')), 8000)
+      )
+      
+      try {
+        const location = await Promise.race([locationPromise, timeoutPromise]) as Location.LocationObject
+        setCoords({ latitude: location.coords.latitude, longitude: location.coords.longitude })
+      } catch {
+        // Keep cached position if timeout occurs
+      }
     } catch {
       // ignore silently for dashboard
     } finally {
@@ -107,12 +145,63 @@ const Home = () => {
   const handlePickImages = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (perm.status !== 'granted') return
-    const result = await ImagePicker.launchImageLibraryAsync({ allowsMultipleSelection: true, mediaTypes: ImagePicker.MediaTypeOptions.All, quality: 0.8 })
-    if (!result.canceled) {
-      const assets = 'assets' in result ? result.assets : []
-      const newItems = assets.map(a => ({ uri: a.uri }))
-      setMedia((prev: { uri: string; type?: string }[]) => [...prev, ...newItems])
+    
+    const result = await ImagePicker.launchImageLibraryAsync({ 
+      allowsMultipleSelection: true, 
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Only images for faster processing
+      quality: 0.8,
+      selectionLimit: 5
+    })
+    
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setIsOptimizingImages(true)
+      
+      // Add images with loading state first for immediate feedback
+      const loadingAssets = result.assets.map(a => ({ 
+        uri: a.uri, 
+        type: a.type,
+        isLoading: true 
+      }))
+      setMedia((prev: { uri: string; type?: string; isLoading?: boolean }[]) => [...prev, ...loadingAssets])
+      
+      // Optimize images in the background
+      try {
+        const optimizedAssets = await Promise.all(
+          result.assets.map(async (asset, index) => {
+            try {
+              const optimizedUri = await compressImage(asset.uri, 800) // 800KB max
+              return { 
+                uri: optimizedUri, 
+                type: asset.type,
+                isLoading: false 
+              }
+            } catch (error) {
+              console.error(`Failed to optimize image ${index}:`, error)
+              return { 
+                uri: asset.uri, 
+                type: asset.type,
+                isLoading: false 
+              }
+            }
+          })
+        )
+        
+        // Replace loading images with optimized ones
+        setMedia((prev: { uri: string; type?: string; isLoading?: boolean }[]) => {
+          const withoutLoading = prev.filter(m => !m.isLoading)
+          return [...withoutLoading, ...optimizedAssets]
+        })
+      } catch (error) {
+        console.error('Error optimizing images:', error)
+        showModal('Optimization error', 'Some images could not be optimized, but they were added.', 'warning', '#F59E0B')
+      } finally {
+        setIsOptimizingImages(false)
+      }
     }
+  }
+
+  const handleDeleteMedia = (index: number) => {
+    setMedia((prev: { uri: string; type?: string; isLoading?: boolean }[]) => prev.filter((_, i) => i !== index))
   }
 
   const resetAddForm = () => {
@@ -126,11 +215,18 @@ const Home = () => {
     setIsSubmitting(false)
   }
 
-  const handleSubmitReport = async () => {
+  const handleSubmitReport = () => {
+    // Validate first
     if (!incidentType || !urgency || (!location && !selectedLocation) || !description) {
       showModal('Validation error', 'Please fill in all required fields', 'warning', '#EF4444')
       return
     }
+    // Show confirmation modal
+    setShowConfirmSubmit(true)
+  }
+
+  const confirmSubmitReport = async () => {
+    setShowConfirmSubmit(false)
     setIsSubmitting(true)
     try {
       // Upload media first (images only for now)
@@ -150,9 +246,9 @@ const Home = () => {
         }
       }
       const payload = {
-        incidentType,
+        incidentType: incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical',
         location: location || `${selectedLocation?.latitude?.toFixed(4)}, ${selectedLocation?.longitude?.toFixed(4)}`,
-        urgency,
+        urgency: urgency as 'Low' | 'Moderate' | 'High',
         description,
         mediaUrls,
       }
@@ -532,13 +628,47 @@ const Home = () => {
               <View className="mb-2">
                 <View className="flex-row flex-wrap gap-2 mb-2">
                   {media.map((m, idx) => (
-                    <View key={`${m.uri}-${idx}`} className={`w-20 h-20 rounded-lg overflow-hidden bg-gray-100`}>
-                      <Image source={{ uri: m.uri }} className="w-full h-full" resizeMode="cover" />
+                    <View key={`${m.uri}-${idx}`} className="relative">
+                      <View className={`w-20 h-20 rounded-lg overflow-hidden ${m.isLoading ? 'bg-gray-200' : 'bg-gray-100'}`}>
+                        {m.isLoading ? (
+                          <View className="w-full h-full items-center justify-center">
+                            <ActivityIndicator size="small" color="#4A90E2" />
+                          </View>
+                        ) : (
+                          <Image 
+                            source={{ uri: m.uri }} 
+                            className="w-full h-full" 
+                            resizeMode="cover"
+                            fadeDuration={200}
+                          />
+                        )}
+                      </View>
+                      {!m.isLoading && (
+                        <TouchableOpacity
+                          onPress={() => handleDeleteMedia(idx)}
+                          className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 items-center justify-center shadow-md"
+                          style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 }}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="trash" size={12} color="#fff" />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ))}
                 </View>
-                <TouchableOpacity onPress={handlePickImages} className={`self-start px-6 py-3 rounded-lg bg-gray-100`}>
-                  <Text className={`font-semibold text-lg text-gray-800`}>Add photos/videos</Text>
+                <TouchableOpacity 
+                  onPress={handlePickImages} 
+                  disabled={isOptimizingImages}
+                  className={`self-start px-6 py-3 rounded-lg ${isOptimizingImages ? 'bg-gray-200' : 'bg-gray-100'}`}
+                >
+                  <View className="flex-row items-center">
+                    {isOptimizingImages && (
+                      <ActivityIndicator size="small" color="#4A90E2" style={{ marginRight: 8 }} />
+                    )}
+                    <Text className={`font-semibold text-lg ${isOptimizingImages ? 'text-gray-500' : 'text-gray-800'}`}>
+                      {isOptimizingImages ? 'Optimizing...' : 'Add photos'}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               </View>
 
@@ -683,24 +813,80 @@ const Home = () => {
 
       <LocationPicker visible={showLocationPicker} onClose={() => setShowLocationPicker(false)} onLocationSelect={handleLocationSelect} initialLocation={selectedLocation || undefined} />
 
-      {/* Floating buttons: Call and Add */}
+      {/* Floating call button */}
       <TouchableOpacity
         activeOpacity={0.9}
-        onPress={() => Linking.openURL('tel:09356016738')}
+        onPress={() => setShowCallConfirm(true)}
         className="absolute right-5 z-50 w-14 h-14 rounded-full bg-red-500 items-center justify-center shadow-lg"
-        style={{ bottom: insets.bottom + 150 }}
+        style={{ bottom: insets.bottom + 90 }}
       >
         <Ionicons name="call" size={24} color="#fff" />
       </TouchableOpacity>
 
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => setShowAdd(true)}
-        className="absolute right-5 z-50 w-14 h-14 rounded-full bg-[#4A90E2] items-center justify-center shadow-lg"
-        style={{ bottom: insets.bottom + 90 }}
-      >
-        <Ionicons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
+      {/* Call Confirmation Modal */}
+      <Modal visible={showCallConfirm} transparent={true} animationType="fade" onRequestClose={() => setShowCallConfirm(false)}>
+        <View className="flex-1 justify-center items-center bg-black/50">
+          <View className="bg-white rounded-2xl p-6 mx-6 max-w-sm w-full">
+            <View className="items-center">
+              <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#EF444420' }}>
+                <Ionicons name="call" size={32} color="#EF4444" />
+              </View>
+              <Text className="text-xl font-bold text-gray-900 mb-2 text-center">Call Silang DRRMO?</Text>
+              <Text className="text-gray-600 text-center mb-6 leading-6">
+                This will call Silang Disaster Risk Reduction and Management Office emergency hotline.
+              </Text>
+              <View className="flex-row gap-3 w-full">
+                <TouchableOpacity
+                  onPress={() => setShowCallConfirm(false)}
+                  className="flex-1 py-3 rounded-xl items-center bg-gray-200"
+                >
+                  <Text className="text-gray-800 font-semibold text-base">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowCallConfirm(false)
+                    Linking.openURL('tel:09356016738')
+                  }}
+                  className="flex-1 py-3 rounded-xl items-center"
+                  style={{ backgroundColor: '#EF4444' }}
+                >
+                  <Text className="text-white font-semibold text-base">Call Now</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirmation Modal */}
+      <Modal visible={showConfirmSubmit} transparent={true} animationType="fade" onRequestClose={() => setShowConfirmSubmit(false)}>
+        <View className="flex-1 justify-center items-center bg-black/50">
+          <View className="bg-white rounded-2xl p-6 mx-6 max-w-sm w-full">
+            <View className="items-center">
+              <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#2563EB20' }}>
+                <Ionicons name="alert-circle" size={32} color="#2563EB" />
+              </View>
+              <Text className="text-xl font-bold text-gray-900 mb-2 text-center">Confirm Submission</Text>
+              <Text className="text-gray-600 text-center mb-6 leading-6">Are you sure you want to submit this report? Please review all details before confirming.</Text>
+              <View className="flex-row gap-3 w-full">
+                <TouchableOpacity
+                  onPress={() => setShowConfirmSubmit(false)}
+                  className="flex-1 py-3 rounded-xl items-center bg-gray-200"
+                >
+                  <Text className="text-gray-800 font-semibold text-base">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={confirmSubmitReport}
+                  className="flex-1 py-3 rounded-xl items-center"
+                  style={{ backgroundColor: '#4A90E2' }}
+                >
+                  <Text className="text-white font-semibold text-base">Confirm</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Success Modal */}
       <Modal visible={showSuccessModal} transparent={true} animationType="fade" onRequestClose={() => setShowSuccessModal(false)}>

@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { supabaseAdmin } = require("../config/supabase");
+const { sanitizePagination, validateRequiredFields } = require("../utils/validation");
 
 // Middleware to check if user is admin
 const checkAdminRole = async (req, res, next) => {
@@ -34,16 +35,8 @@ const checkAdminRole = async (req, res, next) => {
 // GET /api/admin/users - Get all users with pagination and search
 router.get("/users", checkAdminRole, async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 20, 
-      search = '', 
-      barangay = '', 
-      position = '',
-      includeReports = 'false'
-    } = req.query;
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const { search = '', barangay = '', position = '', includeReports = 'false' } = req.query;
+    const { page, limit, offset } = sanitizePagination(req.query);
 
     let query = supabaseAdmin
       .from('users')
@@ -63,7 +56,7 @@ router.get("/users", checkAdminRole, async (req, res) => {
     // Apply pagination and ordering
     const { data: users, error, count } = await query
       .order('created_at', { ascending: false })
-      .range(offset, offset + parseInt(limit) - 1);
+      .range(offset, offset + limit - 1);
 
     if (error) {
       throw error;
@@ -96,17 +89,17 @@ router.get("/users", checkAdminRole, async (req, res) => {
     }
 
     // Get total pages
-    const totalPages = Math.ceil((count || 0) / parseInt(limit));
+    const totalPages = Math.ceil((count || 0) / limit);
 
     res.json({
       users: usersWithReports,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total: count || 0,
         totalPages,
-        hasNext: parseInt(page) < totalPages,
-        hasPrev: parseInt(page) > 1
+        hasNext: page < totalPages,
+        hasPrev: page > 1
       }
     });
   } catch (error) {
@@ -119,11 +112,11 @@ router.get("/users", checkAdminRole, async (req, res) => {
 router.post("/users", checkAdminRole, async (req, res) => {
   try {
     const { userid, name, barangay, barangay_position, password } = req.body;
-
-    // Validate required fields
-    if (!userid || !name || !barangay || !barangay_position || !password) {
+    
+    const validation = validateRequiredFields(req.body, ['userid', 'name', 'barangay', 'barangay_position', 'password']);
+    if (!validation.valid) {
       return res.status(400).json({ 
-        error: "userid, name, barangay, barangay_position, and password are required" 
+        error: `Missing required fields: ${validation.missing.join(', ')}` 
       });
     }
 
@@ -201,9 +194,10 @@ router.put("/users/:id", checkAdminRole, async (req, res) => {
     const { id } = req.params;
     const { name, barangay, barangay_position } = req.body;
 
-    if (!name || !barangay || !barangay_position) {
+    const validation = validateRequiredFields(req.body, ['name', 'barangay', 'barangay_position']);
+    if (!validation.valid) {
       return res.status(400).json({ 
-        error: "name, barangay, and barangay_position are required" 
+        error: `Missing required fields: ${validation.missing.join(', ')}` 
       });
     }
 
@@ -401,9 +395,7 @@ router.get("/barangays", checkAdminRole, async (req, res) => {
 router.get("/users/:userId/reports", checkAdminRole, async (req, res) => {
   try {
     const { userId } = req.params;
-    const { page = 1, limit = 10 } = req.query;
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const { page, limit, offset } = sanitizePagination(req.query);
 
     // Get user info
     const { data: user, error: userError } = await supabaseAdmin
@@ -422,11 +414,11 @@ router.get("/users/:userId/reports", checkAdminRole, async (req, res) => {
       .select('*', { count: 'exact' })
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .range(offset, offset + parseInt(limit) - 1);
+      .range(offset, offset + limit - 1);
 
     if (reportsError) throw reportsError;
 
-    const totalPages = Math.ceil((count || 0) / parseInt(limit));
+    const totalPages = Math.ceil((count || 0) / limit);
 
     res.json({
       user: {
@@ -437,12 +429,12 @@ router.get("/users/:userId/reports", checkAdminRole, async (req, res) => {
       },
       reports: reports || [],
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total: count || 0,
         totalPages,
-        hasNext: parseInt(page) < totalPages,
-        hasPrev: parseInt(page) > 1
+        hasNext: page < totalPages,
+        hasPrev: page > 1
       }
     });
   } catch (error) {
@@ -454,17 +446,8 @@ router.get("/users/:userId/reports", checkAdminRole, async (req, res) => {
 // GET /api/admin/reports - Get all reports with user info
 router.get("/reports", checkAdminRole, async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 20, 
-      search = '', 
-      barangay = '',
-      urgency = '',
-      startDate = '',
-      endDate = ''
-    } = req.query;
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const { search = '', barangay = '', urgency = '', startDate = '', endDate = '' } = req.query;
+    const { page, limit, offset } = sanitizePagination(req.query);
 
     // Build the query with joins
     let query = supabaseAdmin
@@ -494,21 +477,21 @@ router.get("/reports", checkAdminRole, async (req, res) => {
     // Apply pagination and ordering
     const { data: reports, error, count } = await query
       .order('created_at', { ascending: false })
-      .range(offset, offset + parseInt(limit) - 1);
+      .range(offset, offset + limit - 1);
 
     if (error) throw error;
 
-    const totalPages = Math.ceil((count || 0) / parseInt(limit));
+    const totalPages = Math.ceil((count || 0) / limit);
 
     res.json({
       reports: reports || [],
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total: count || 0,
         totalPages,
-        hasNext: parseInt(page) < totalPages,
-        hasPrev: parseInt(page) > 1
+        hasNext: page < totalPages,
+        hasPrev: page > 1
       }
     });
   } catch (error) {

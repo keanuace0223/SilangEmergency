@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { supabaseAdmin } = require("../config/supabase");
+const { isValidUUID } = require("../utils/validation");
 
 // GET /api/users - Get all users
 router.get("/", async (req, res) => {
@@ -54,9 +55,7 @@ router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Validate that id is a valid UUID
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
+    if (!isValidUUID(id)) {
       return res.status(400).json({ message: "Invalid user ID format" });
     }
     
@@ -86,9 +85,7 @@ router.put("/:id", async (req, res) => {
     const { id } = req.params;
     const { name, barangay, barangay_position, profile_pic } = req.body;
     
-    // Validate that id is a valid UUID
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
+    if (!isValidUUID(id)) {
       return res.status(400).json({ message: "Invalid user ID format" });
     }
     

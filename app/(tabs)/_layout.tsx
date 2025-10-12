@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs, usePathname, useRouter } from 'expo-router';
-import { DeviceEventEmitter, Linking, TouchableOpacity, View } from 'react-native';
+import { Tabs, usePathname } from 'expo-router';
+import { DeviceEventEmitter, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ScaledText from '../../components/ScaledText';
 import { useUser } from '../../src/context/UserContext';
@@ -19,9 +19,7 @@ const TabsLayout = () => {
   const { user } = useUser();
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
-  const router = useRouter();
   const TAB_BAR_HEIGHT = 64;
-  const FLOAT_MARGIN = 20;
 
   // Check if user is admin via known admin userids and/or email aliases
   const adminUserIds = ['admin1', 'admin2', 'admin3'];
@@ -30,17 +28,8 @@ const TabsLayout = () => {
     (user?.userid && adminUserIds.includes(user.userid)) ||
     (user?.email && adminEmails.includes(user.email))
   );
-  
-  // Debug logging for admin check
-  console.log('Tab Layout - User:', user);
-  console.log('Tab Layout - User Email:', user?.email);
-  console.log('Tab Layout - Is Admin:', isAdmin);
 
-  // derive booleans inline in handlers to avoid unused warnings
-  // Show FABs on all tabs to avoid path-mismatch issues across devices
-  const showFloatingActions = pathname?.startsWith('/(tabs)') === true;
-
-  // Custom pill-style tab bar
+  // Custom pill-style tab bar with centered add button
   const CustomTabBar = ({ state, descriptors, navigation }: any) => {
     const activeColor = '#4A90E2';
     const inactiveColor = '#8E8E93';
@@ -51,73 +40,111 @@ const TabsLayout = () => {
       profile: 'person',
     };
 
+    // Split tabs into left and right groups for the centered button
+    const leftTabs = ['index', 'reports'];
+    const rightTabs = ['drafts', 'profile'];
+
+    const renderTab = (route: any) => {
+      const index = state.routes.findIndex((r: any) => r.key === route.key);
+      const isFocused = state.index === index;
+      const color = isFocused ? activeColor : inactiveColor;
+      const onPress = () => {
+        const event = navigation.emit({
+          type: 'tabPress',
+          target: route.key,
+          canPreventDefault: true,
+        });
+        if (!isFocused && !event.defaultPrevented) {
+          navigation.navigate(route.name);
+        }
+      };
+      const options = descriptors[route.key]?.options || {};
+      const label = (options.title as string) || (options.tabBarLabel as string) || route.name;
+      
+      return (
+        <TouchableOpacity
+          key={route.key}
+          onPress={onPress}
+          activeOpacity={0.85}
+          className="flex-1 h-12 mx-1 rounded-2xl items-center justify-center"
+          style={{
+            backgroundColor: isFocused ? '#E8F1FD' : 'transparent',
+          }}
+        >
+          <Ionicons name={iconMap[route.name] as any} size={22} color={color} />
+          <ScaledText baseSize={11} style={{ marginTop: 4, fontWeight: '700', color }}>{label}</ScaledText>
+        </TouchableOpacity>
+      );
+    };
+
     return (
       <View
+        className="absolute left-0 right-0 items-center"
         style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
           bottom: Math.max(insets.bottom + 6, 10),
           height: TAB_BAR_HEIGHT,
-          alignItems: 'center',
         }}
         pointerEvents="box-none"
       >
         <View
+          className="flex-row items-center justify-between px-2 rounded-3xl"
           style={{
             ...TAB_BAR_SHADOW,
-            borderRadius: 32,
             height: '100%',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-around',
-            paddingHorizontal: 8,
             width: '92%',
             maxWidth: 640,
             minWidth: 320,
           }}
         >
-          {(() => {
-            const desiredOrder = ['index', 'reports', 'drafts', 'profile'];
-            const orderedRoutes = [...state.routes].sort((a, b) => desiredOrder.indexOf(a.name) - desiredOrder.indexOf(b.name));
-            return orderedRoutes.map((route: any) => {
-              const index = state.routes.findIndex((r: any) => r.key === route.key);
-              const isFocused = state.index === index;
-              const color = isFocused ? activeColor : inactiveColor;
-              const onPress = () => {
-                const event = navigation.emit({
-                  type: 'tabPress',
-                  target: route.key,
-                  canPreventDefault: true,
-                });
-                if (!isFocused && !event.defaultPrevented) {
-                  navigation.navigate(route.name);
+          {/* Left side tabs */}
+          <View className="flex-row flex-1">
+            {leftTabs.map((tabName) => {
+              const route = state.routes.find((r: any) => r.name === tabName);
+              return route ? renderTab(route) : null;
+            })}
+          </View>
+
+          {/* Centered Add Report Button */}
+          {!isAdmin && (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
+                // Emit event for the current tab to handle add report
+                if (pathname?.endsWith('/index')) {
+                  DeviceEventEmitter.emit('OPEN_HOME_ADD');
+                } else if (pathname?.includes('/reports')) {
+                  DeviceEventEmitter.emit('OPEN_REPORTS_ADD');
+                } else if (pathname?.includes('/drafts')) {
+                  DeviceEventEmitter.emit('OPEN_DRAFTS_ADD');
+                } else if (pathname?.includes('/profile')) {
+                  DeviceEventEmitter.emit('OPEN_PROFILE_ADD');
+                } else {
+                  // Fallback to home
+                  DeviceEventEmitter.emit('OPEN_HOME_ADD');
                 }
-              };
-              const options = descriptors[route.key]?.options || {};
-              const label = (options.title as string) || (options.tabBarLabel as string) || route.name;
-              return (
-                <TouchableOpacity
-                  key={route.key}
-                  onPress={onPress}
-                  activeOpacity={0.85}
-                  style={{
-                    flex: 1,
-                    height: TAB_BAR_HEIGHT - 16,
-                    marginVertical: 8,
-                    marginHorizontal: 4,
-                    borderRadius: 22,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: isFocused ? '#E8F1FD' : 'transparent',
-                  }}
-                >
-                  <Ionicons name={iconMap[route.name] as any} size={22} color={color} />
-                  <ScaledText baseSize={11} style={{ marginTop: 4, fontWeight: '700', color }}>{label}</ScaledText>
-                </TouchableOpacity>
-              );
-            });
-          })()}
+              }}
+              className="w-14 h-14 rounded-full items-center justify-center mx-2"
+              style={{
+                backgroundColor: '#4A90E2',
+                shadowColor: '#4A90E2',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.4,
+                shadowRadius: 12,
+                elevation: 12,
+                transform: [{ translateY: -16 }], // Elevate the button more
+              }}
+            >
+              <Ionicons name="add" size={28} color="#fff" />
+            </TouchableOpacity>
+          )}
+
+          {/* Right side tabs */}
+          <View className="flex-row flex-1">
+            {rightTabs.map((tabName) => {
+              const route = state.routes.find((r: any) => r.name === tabName);
+              return route ? renderTab(route) : null;
+            })}
+          </View>
         </View>
       </View>
     );
@@ -149,38 +176,6 @@ const TabsLayout = () => {
             options={{ title: 'Profile' }}
           />
       </Tabs>
-
-      {showFloatingActions && (
-        <>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => Linking.openURL('tel:09356016738')}
-            style={{ position: 'absolute', right: 20, bottom: (TAB_BAR_HEIGHT + FLOAT_MARGIN) + insets.bottom + 60, width: 56, height: 56, borderRadius: 28, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', elevation: 8 }}
-          >
-            <Ionicons name="call" size={22} color="#fff" />
-          </TouchableOpacity>
-
-          {/* Only show add report FAB for non-admin users */}
-          {!isAdmin && (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => {
-                if (pathname?.endsWith('/index')) {
-                  DeviceEventEmitter.emit('OPEN_HOME_ADD');
-                } else if (pathname?.includes('/reports')) {
-                  router.push({ pathname: '/(tabs)/reports', params: { openAdd: '1' } })
-                } else {
-                  // For other tabs, default to reports add for now
-                  router.push({ pathname: '/(tabs)/reports', params: { openAdd: '1' } })
-                }
-              }}
-              style={{ position: 'absolute', right: 20, bottom: (TAB_BAR_HEIGHT + FLOAT_MARGIN) + insets.bottom, width: 56, height: 56, borderRadius: 28, backgroundColor: '#4A90E2', alignItems: 'center', justifyContent: 'center', elevation: 8 }}
-            >
-              <Ionicons name="add" size={26} color="#fff" />
-            </TouchableOpacity>
-          )}
-        </>
-      )}
     </View>
   )
 }

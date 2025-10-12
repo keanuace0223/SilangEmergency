@@ -21,7 +21,11 @@ CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at
 -- Enable Row Level Security
 ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
 
--- Create policies for RLS
+-- Create policies for RLS (drop existing ones first to avoid conflicts)
+DROP POLICY IF EXISTS "Users can view own sessions" ON user_sessions;
+DROP POLICY IF EXISTS "Users can update own sessions" ON user_sessions;
+DROP POLICY IF EXISTS "Service role full access on sessions" ON user_sessions;
+
 -- Users can read their own sessions
 CREATE POLICY "Users can view own sessions" ON user_sessions
   FOR SELECT USING (user_id = auth.uid());
@@ -44,6 +48,18 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Function to clean up orphaned sessions (sessions from deleted apps)
+CREATE OR REPLACE FUNCTION cleanup_orphaned_sessions()
+RETURNS void AS $$
+BEGIN
+  -- Deactivate sessions that haven't been updated in the last hour
+  -- This helps clean up sessions from apps that were deleted
+  UPDATE user_sessions 
+  SET is_active = false 
+  WHERE last_activity < (NOW() - INTERVAL '1 hour') AND is_active = true;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Function to check for active sessions for a user
 CREATE OR REPLACE FUNCTION check_active_sessions(p_user_id UUID)
 RETURNS TABLE (
@@ -51,8 +67,9 @@ RETURNS TABLE (
   active_sessions JSONB
 ) AS $$
 BEGIN
-  -- First cleanup expired sessions
+  -- First cleanup expired and orphaned sessions
   PERFORM cleanup_expired_sessions();
+  PERFORM cleanup_orphaned_sessions();
   
   -- Return active session count and details
   RETURN QUERY
@@ -93,8 +110,9 @@ DECLARE
   existing_count INTEGER;
   new_session_id UUID;
 BEGIN
-  -- First cleanup expired sessions
+  -- First cleanup expired and orphaned sessions
   PERFORM cleanup_expired_sessions();
+  PERFORM cleanup_orphaned_sessions();
   
   -- Check for existing active sessions
   SELECT COUNT(*) INTO existing_count

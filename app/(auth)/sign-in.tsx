@@ -3,14 +3,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-  Animated,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  View
+    Animated,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppModal from '../../components/AppModal';
@@ -122,7 +122,14 @@ export default function SignInScreen() {
       return;
     }
 
-    // 3) Check for existing sessions (strict single-session; no force login)
+    // 3) Clean up orphaned sessions first (sessions from deleted apps)
+    try {
+      await sessionManager.cleanupOrphanedSessions(userId);
+    } catch (error) {
+      console.warn('Failed to cleanup orphaned sessions:', error);
+    }
+
+    // 4) Check for existing sessions (strict single-session; no force login)
     if (!forceSingleSession) {
       try {
         const sessionCheck = await sessionManager.checkActiveSessions(userId);
@@ -140,7 +147,7 @@ export default function SignInScreen() {
       }
     }
 
-    // 4) Create session tracking (no force deactivation allowed)
+    // 5) Create session tracking (no force deactivation allowed)
     try {
       const created = await sessionManager.createSession(userId, false);
       if (!created.success && created.existingSessions > 0) {
@@ -155,7 +162,7 @@ export default function SignInScreen() {
       console.warn('Failed to create session tracking:', error);
     }
 
-    // 5) Persist token and user data
+    // 6) Persist token and user data
     const accessToken = sessionData.session?.access_token || 'supabase-session';
     await AsyncStorage.setItem('authToken', accessToken);
     const persistedUser = {
