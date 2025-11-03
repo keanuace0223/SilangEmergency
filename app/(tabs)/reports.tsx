@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons'
+import { useFocusEffect } from '@react-navigation/native'
 import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams } from 'expo-router'
 import React from 'react'
@@ -6,14 +7,18 @@ import { ActivityIndicator, DeviceEventEmitter, Dimensions, FlatList, Image, Key
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AppModal from '../../components/AppModal'
 import LocationPicker from '../../components/LocationPicker'
+import OfflineModeBanner from '../../components/OfflineModeBanner'
 import ScaledText from '../../components/ScaledText'
+import SyncStatusIndicator from '../../components/SyncStatusIndicator'
 import { Body, Caption, Subtitle, Title } from '../../components/Typography'
 import { images } from '../../constants/images'
 import { api } from '../../src/api/client'
 import { useSettings } from '../../src/context/SettingsContext'
+import { useSync } from '../../src/context/SyncContext'
 import { useUser } from '../../src/context/UserContext'
 import { uploadMultipleReportMedia } from '../../src/lib/supabase'
 import { compressImage } from '../../src/utils/imageOptimizer'
+import { offlineStorage } from '../../src/utils/offlineStorage'
 
 const Reports = () => {
   const { textScale } = useSettings()
@@ -22,7 +27,8 @@ const Reports = () => {
   const s = (px: number) => Math.round(px * spacingScale)
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets()
-  const { user } = useUser()
+  const { user, refreshKey } = useUser()
+  const { isOnline, manualSync, retryFailedReports, isSyncing } = useSync()
   const [showAdd, setShowAdd] = React.useState(false)
   const [showDetail, setShowDetail] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<any>(null)
@@ -34,7 +40,14 @@ const Reports = () => {
   const [incidentType, setIncidentType] = React.useState<'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical' | ''>('')
   const [showIncidentMenu, setShowIncidentMenu] = React.useState(false)
   const [location, setLocation] = React.useState('')
-  const [urgency, setUrgency] = React.useState<'Low' | 'Moderate' | 'High' | ''>('')
+  const [patientStatus, setPatientStatus] = React.useState<'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | ''>('')
+  const [limitStatus, setLimitStatus] = React.useState<{
+    count: number;
+    remaining: number;
+    limitReached: boolean;
+    limit: number;
+  } | null>(null)
+  const [isLoadingLimit, setIsLoadingLimit] = React.useState(false)
   const [description, setDescription] = React.useState('')
   const [media, setMedia] = React.useState<{ uri: string; type?: string; isLoading?: boolean }[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -50,6 +63,7 @@ const Reports = () => {
   const [modalIcon, setModalIcon] = React.useState<'checkmark-circle' | 'warning' | 'information-circle'>('information-circle')
   const [modalIconColor, setModalIconColor] = React.useState('#2563EB')
   const [showConfirmSubmit, setShowConfirmSubmit] = React.useState(false)
+  const [showConfirmDraft, setShowConfirmDraft] = React.useState(false)
   const [showCallConfirm, setShowCallConfirm] = React.useState(false)
 
   const showModal = (title: string, message: string, icon: 'checkmark-circle' | 'warning' | 'information-circle', color: string) => {
@@ -106,32 +120,70 @@ const Reports = () => {
     return s.slice(0, 4).toUpperCase()
   }
 
-  // Fetch reports from API
+  // Fetch reports from API and offline storage
   const fetchReports = React.useCallback(async () => {
     try {
       if (!user?.id) { setReports([]); return }
       setIsLoading(true)
-      const reportsData = await api.reports.getAll(user.id)
-      setReports(reportsData)
+      
+      let onlineReports: any[] = []
+      
+      // Fetch online reports if connected
+      if (isOnline) {
+        try {
+          onlineReports = await api.reports.getAll(user.id)
+        } catch (error) {
+          console.warn('Failed to fetch online reports:', error)
+        }
+      }
+      
+      // Note: We don't include offline reports in the main reports list anymore
+      // because synced offline reports should already be on the server and fetched as online reports
+      // This prevents duplicates
+      
+      // Use only online reports (which includes previously synced offline reports)
+      const allReports = onlineReports
+        .sort((a, b) => new Date(b.incident_datetime).getTime() - new Date(a.incident_datetime).getTime())
+      
+      setReports(allReports)
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Failed to fetch reports'
       showModal('Connection error', `${msg}\n\nPlease check your internet connection and Supabase credentials.`, 'warning', '#EF4444')
     } finally {
       setIsLoading(false)
     }
-  }, [user?.id])
+  }, [user?.id, isOnline])
 
-  // Refresh reports
+  // Refresh reports and sync pending items
   const onRefresh = async () => {
     setRefreshing(true)
-    await fetchReports()
-    setRefreshing(false)
+    try {
+      // Trigger sync if online and not already syncing
+      if (isOnline && !isSyncing) {
+        await manualSync()
+      }
+      // Fetch latest reports
+      await fetchReports()
+    } catch (error) {
+      console.error('Refresh error:', error)
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   // Load reports on component mount
   React.useEffect(() => {
     if (user?.id) { fetchReports() }
-  }, [fetchReports, user?.id])
+  }, [fetchReports, user?.id, refreshKey])
+
+  // Auto-refresh when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user?.id) {
+        fetchReports()
+      }
+    }, [fetchReports, user?.id, refreshKey])
+  )
 
   // Open Add modal when navigated with ?openAdd=1
   React.useEffect(() => {
@@ -191,7 +243,10 @@ const Reports = () => {
       'Medium': 'Moderate', 
       'Low': 'Low'
     }
-    return reports.filter(report => report.urgency_tag === filterMap[activeFilter])
+    return reports.filter(report => {
+      const urgency = report.urgency_level || report.urgency_tag || 'Low';
+      return urgency === filterMap[activeFilter];
+    })
   }
 
   // Handle filter change
@@ -204,12 +259,35 @@ const Reports = () => {
     setIncidentType('')
     setShowIncidentMenu(false)
     setLocation('')
-    setUrgency('')
+    setPatientStatus('')
     setDescription('')
     setMedia([])
     setIsSubmitting(false)
     setSelectedLocation(null)
   }
+
+  // Fetch limit status when modal opens
+  const fetchLimitStatus = React.useCallback(async () => {
+    if (!user?.id || !showAdd) return;
+    
+    setIsLoadingLimit(true);
+    try {
+      const status = await api.reports.getHourlyStatus(user.id);
+      setLimitStatus(status);
+    } catch (error) {
+      console.warn('Failed to fetch limit status:', error);
+      setLimitStatus({ count: 0, remaining: 3, limitReached: false, limit: 3 });
+    } finally {
+      setIsLoadingLimit(false);
+    }
+  }, [user?.id, showAdd]);
+
+  // Fetch limit status when modal opens
+  React.useEffect(() => {
+    if (showAdd && user?.id) {
+      fetchLimitStatus();
+    }
+  }, [showAdd, user?.id, fetchLimitStatus]);
 
   const handleClose = () => {
     setShowAdd(false)
@@ -218,12 +296,22 @@ const Reports = () => {
 
   const handleSave = () => {
     // Validate first
-    if (!incidentType || !location || !urgency || !description) {
+    if (!incidentType || !location || !patientStatus || !description) {
       showModal('Validation error', 'Please fill in all required fields', 'warning', '#EF4444')
       return
     }
     // Show confirmation modal
     setShowConfirmSubmit(true)
+  }
+
+  const handleSaveDraft = () => {
+    // Validate first
+    if (!incidentType || !location || !patientStatus || !description) {
+      showModal('Validation error', 'Please fill in all required fields', 'warning', '#EF4444')
+      return
+    }
+    // Show draft confirmation modal
+    setShowConfirmDraft(true)
   }
 
   const confirmSubmitReport = async () => {
@@ -235,36 +323,187 @@ const Reports = () => {
         showModal('Not signed in', 'Please sign in again to submit a report.', 'warning', '#EF4444')
         return
       }
-      // Upload selected media to Supabase Storage first (images only for stability)
-      let mediaUrls: string[] = []
-      if (media.length > 0) {
-        const imageUris = media.filter(m => (m as any).type !== 'video').map(m => m.uri)
-        const skippedVideos = media.length - imageUris.length
-        const { urls, errors } = await uploadMultipleReportMedia(user.id, imageUris)
-        if (errors.length > 0 && urls.length === 0) {
-          const detail = errors.join('\n')
-          showModal('Upload error', `Failed to upload media.\n${detail}`, 'warning', '#EF4444')
-          return
-        }
-        mediaUrls = urls
-        if (skippedVideos > 0) {
-          showModal('Note', `${skippedVideos} video${skippedVideos > 1 ? 's' : ''} skipped for upload. Images uploaded successfully.`, 'information-circle', '#2563EB')
-        }
+
+      // Check limit before submitting
+      const currentLimit = await api.reports.getHourlyStatus(user.id);
+      if (currentLimit.limitReached) {
+        showModal(
+          'Report limit reached',
+          'You\'ve reached your report limit of 3 reports per hour. Please wait before submitting another report.',
+          'warning',
+          '#EF4444'
+        );
+        setIsSubmitting(false);
+        await fetchLimitStatus(); // Refresh limit status
+        return;
       }
+
+      // Map patientStatus to urgency for backward compatibility
+      const urgencyLevel: 'Low' | 'Moderate' | 'High' = 
+        patientStatus === 'Alert' ? 'Low' :
+        patientStatus === 'Voice' ? 'Moderate' :
+        patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low';
+
       const reportData = {
-        incidentType: incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical',
+        user_id: user.id,
+        incident_type: incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical',
         location: selectedLocation ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}` : location,
-        urgency: urgency as 'Low' | 'Moderate' | 'High',
+        patient_status: patientStatus as 'Alert' | 'Voice' | 'Pain' | 'Unresponsive',
+        urgency_level: urgencyLevel,
+        urgency_tag: urgencyLevel,
         description,
-        mediaUrls
+        uploaded_media: [] as string[],
+        incident_datetime: new Date().toISOString(),
       }
-      await api.reports.create(reportData, user.id)
-      await fetchReports()
-      showModal('Report submitted', 'Your report has been submitted successfully.', 'checkmark-circle', '#16A34A')
+
+      if (isOnline) {
+        // Online mode - try to submit directly
+        try {
+          // Upload selected media to Supabase Storage first (images only for stability)
+          let mediaUrls: string[] = []
+          if (media.length > 0) {
+            const imageUris = media.filter(m => (m as any).type !== 'video').map(m => m.uri)
+            const skippedVideos = media.length - imageUris.length
+            const { urls, errors } = await uploadMultipleReportMedia(user.id, imageUris)
+            if (errors.length > 0 && urls.length === 0) {
+              const detail = errors.join('\n')
+              showModal('Upload error', `Failed to upload media.\n${detail}`, 'warning', '#EF4444')
+              return
+            }
+            mediaUrls = urls
+            if (skippedVideos > 0) {
+              showModal('Note', `${skippedVideos} video${skippedVideos > 1 ? 's' : ''} skipped for upload. Images uploaded successfully.`, 'information-circle', '#2563EB')
+            }
+          }
+          
+          const apiReportData = {
+            incidentType: reportData.incident_type,
+            location: reportData.location,
+            patientStatus: reportData.patient_status,
+            description: reportData.description,
+            mediaUrls
+          }
+          
+          await api.reports.create(apiReportData, user.id)
+          await fetchReports()
+          await fetchLimitStatus(); // Refresh limit status after submission
+          showModal('Report submitted', 'Your report has been submitted successfully.', 'checkmark-circle', '#16A34A')
+          setShowAdd(false); resetForm()
+        } catch (error: any) {
+          // Handle 429 rate limit error
+          if (error?.status === 429 || error?.code === 'RATE_LIMIT_EXCEEDED') {
+            showModal(
+              'Report limit reached',
+              error.message || 'You\'ve reached your report limit of 3 reports per hour. Please wait before submitting another report.',
+              'warning',
+              '#EF4444'
+            );
+            await fetchLimitStatus(); // Refresh limit status
+            setIsSubmitting(false);
+            return;
+          }
+          // If online submission fails, fall back to offline storage
+          console.warn('Online submission failed, saving offline:', error)
+          await saveOfflineReport(reportData)
+        }
+      } else {
+        // Offline mode - save locally
+        await saveOfflineReport(reportData)
+      }
+    } catch (error: any) {
+      if (error?.status === 429 || error?.code === 'RATE_LIMIT_EXCEEDED') {
+        showModal(
+          'Report limit reached',
+          error.message || 'You\'ve reached your report limit of 3 reports per hour. Please wait before submitting another report.',
+          'warning',
+          '#EF4444'
+        );
+        await fetchLimitStatus(); // Refresh limit status
+      } else {
+        const msg = error instanceof Error ? error.message : 'Failed to submit report'
+        showModal('Submission error', msg, 'warning', '#EF4444')
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const saveOfflineReport = async (reportData: any) => {
+    try {
+      // Save media files locally for offline sync
+      const localMediaPaths: string[] = []
+      if (media.length > 0) {
+        // For offline mode, we'll store the local URIs and upload them when syncing
+        localMediaPaths.push(...media.map(m => m.uri))
+      }
+
+      const offlineReportData = {
+        ...reportData,
+        local_media_paths: localMediaPaths,
+      }
+
+      await offlineStorage.saveOfflineReport(offlineReportData)
+      await fetchReports() // Refresh to show the offline report
+      
+      const message = isOnline 
+        ? 'Report saved offline and will sync automatically.'
+        : 'Report saved offline. It will sync when you\'re back online.'
+      
+      showModal('Report saved', message, 'checkmark-circle', '#16A34A')
       setShowAdd(false); resetForm()
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Failed to submit report'
-      showModal('Submission error', msg, 'warning', '#EF4444')
+      console.error('Error saving offline report:', error)
+      throw error
+    }
+  }
+
+  const confirmSaveDraft = async () => {
+    setShowConfirmDraft(false)
+    setIsSubmitting(true)
+
+    try {
+      if (!user?.id) {
+        showModal('Not signed in', 'Please sign in again to save a draft.', 'warning', '#EF4444')
+        return
+      }
+
+      // Map patientStatus to urgency for backward compatibility
+      const urgencyLevel: 'Low' | 'Moderate' | 'High' = 
+        patientStatus === 'Alert' ? 'Low' :
+        patientStatus === 'Voice' ? 'Moderate' :
+        patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low';
+
+      const reportData = {
+        user_id: user.id,
+        incident_type: incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical',
+        location: selectedLocation ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}` : location,
+        patient_status: patientStatus as 'Alert' | 'Voice' | 'Pain' | 'Unresponsive',
+        urgency_level: urgencyLevel,
+        urgency_tag: urgencyLevel,
+        description,
+        uploaded_media: [] as string[],
+        incident_datetime: new Date().toISOString(),
+      }
+
+      // Save media files locally for draft
+      const localMediaPaths: string[] = []
+      if (media.length > 0) {
+        localMediaPaths.push(...media.map(m => m.uri))
+      }
+
+      const draftData = {
+        ...reportData,
+        local_media_paths: localMediaPaths,
+      }
+
+      await offlineStorage.saveDraft(draftData)
+      await fetchReports() // Refresh to show the draft
+      
+      showModal('Draft saved', 'Your report has been saved as a draft. You can edit or submit it later from the Drafts screen.', 'checkmark-circle', '#16A34A')
+      setShowAdd(false); resetForm()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to save draft'
+      showModal('Draft error', msg, 'warning', '#EF4444')
     } finally {
       setIsSubmitting(false)
     }
@@ -344,8 +583,30 @@ const Reports = () => {
     })
   }
 
+  // Get sync status color and icon
+  const getSyncStatusInfo = (item: any) => {
+    if (!item.isOffline) {
+      return { color: '#10B981', icon: 'checkmark-circle', text: 'SYNCED' }
+    }
+    
+    switch (item.sync_status) {
+      case 'pending':
+        return { color: '#F59E0B', icon: 'time', text: 'PENDING' }
+      case 'syncing':
+        return { color: '#3B82F6', icon: 'sync', text: 'SYNCING' }
+      case 'error':
+        return { color: '#EF4444', icon: 'warning', text: 'ERROR' }
+      case 'synced':
+        return { color: '#10B981', icon: 'checkmark-circle', text: 'SYNCED' }
+      default:
+        return { color: '#F59E0B', icon: 'time', text: 'PENDING' }
+    }
+  }
+
   // Render report item
   const renderReportItem = ({ item }: { item: any }) => {
+    const syncInfo = getSyncStatusInfo(item)
+    
     return (
       <TouchableOpacity onPress={() => handleReportPress(item)} activeOpacity={0.8} className="mx-6">
         <View className={`bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-lg`} style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 12 }}>
@@ -358,6 +619,11 @@ const Reports = () => {
                 <View className="flex-1">
                   <View className="flex-row items-center mb-1">
                     <Subtitle style={{ color: '#111827', fontWeight: '700' }}>{item.incident_type}</Subtitle>
+                    {item.isOffline && (
+                      <View className="ml-2 px-2 py-1 rounded-full" style={{ backgroundColor: '#F3F4F6' }}>
+                        <Caption className="font-medium" style={{ color: '#6B7280', fontSize: 10 }}>OFFLINE</Caption>
+                      </View>
+                    )}
                   </View>
                   <View className="flex-row items-center">
                     <Ionicons name="location" size={14} color="#4B5563" />
@@ -365,8 +631,10 @@ const Reports = () => {
                   </View>
                 </View>
               </View>
-              <View className="px-3 py-1.5 rounded-full shadow-sm" style={{ backgroundColor: getUrgencyColor(item.urgency_tag), shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
-                <Caption className="font-bold tracking-wide" style={{ color: '#FFFFFF' }}>{item.urgency_tag.toUpperCase()}</Caption>
+              <View className="px-3 py-1.5 rounded-full shadow-sm" style={{ backgroundColor: getUrgencyColor(item.urgency_level || item.urgency_tag || 'Low'), shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
+                <Caption className="font-bold tracking-wide" style={{ color: '#FFFFFF' }}>
+                  {item.patient_status ? String(item.patient_status).toUpperCase() : String(item.urgency_tag || 'Low').toUpperCase()}
+                </Caption>
               </View>
             </View>
           </View>
@@ -375,8 +643,11 @@ const Reports = () => {
             <Body className={`leading-6 mb-4`} style={{ color: '#374151' }} numberOfLines={2}>{item.description}</Body>
             <View className={`flex-row items-center justify-between pt-3 border-t border-gray-100`}>
               <View className="flex-row items-center">
-                <View className="w-2 h-2 rounded-full bg-green-500 mr-2" />
-                <Caption className={`font-medium`} style={{ color: '#6B7280' }}>REPORTED</Caption>
+                <View className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: syncInfo.color }} />
+                <Caption className={`font-medium`} style={{ color: '#6B7280' }}>{syncInfo.text}</Caption>
+                {item.sync_status === 'syncing' && (
+                  <ActivityIndicator size="small" color={syncInfo.color} style={{ marginLeft: 8 }} />
+                )}
               </View>
               <Caption className={`font-medium`} style={{ color: '#9CA3AF' }}>{formatTimestamp(item.incident_datetime)}</Caption>
             </View>
@@ -402,8 +673,52 @@ const Reports = () => {
                 </Subtitle>
               </View>
             </View>
+            <SyncStatusIndicator 
+              compact={true}
+              onPress={() => {
+                if (!isOnline) {
+                  showModal('Offline Mode', 'You are currently offline. Reports will sync when connection is restored.', 'information-circle', '#F59E0B')
+                } else {
+                  manualSync().then(result => {
+                    if (result.success) {
+                      showModal('Sync Complete', `Successfully synced ${result.syncedCount} reports.`, 'checkmark-circle', '#10B981')
+                    } else {
+                      showModal('Sync Failed', `Failed to sync ${result.errorCount} reports.`, 'warning', '#EF4444')
+                    }
+                  }).catch(error => {
+                    showModal('Sync Error', error.message, 'warning', '#EF4444')
+                  })
+                }
+              }}
+            />
           </View>
         </View>
+
+        {/* Offline Mode Banner */}
+        <OfflineModeBanner 
+          onRetryPress={() => {
+            retryFailedReports().then(result => {
+              if (result.success) {
+                showModal('Retry Complete', `Successfully synced ${result.syncedCount} reports.`, 'checkmark-circle', '#10B981')
+              } else {
+                showModal('Retry Failed', `Failed to sync ${result.errorCount} reports.`, 'warning', '#EF4444')
+              }
+            }).catch(error => {
+              showModal('Retry Error', error.message, 'warning', '#EF4444')
+            })
+          }}
+          onManualSyncPress={() => {
+            manualSync().then(result => {
+              if (result.success) {
+                showModal('Sync Complete', `Successfully synced ${result.syncedCount} reports.`, 'checkmark-circle', '#10B981')
+              } else {
+                showModal('Sync Failed', `Failed to sync ${result.errorCount} reports.`, 'warning', '#EF4444')
+              }
+            }).catch(error => {
+              showModal('Sync Error', error.message, 'warning', '#EF4444')
+            })
+          }}
+        />
 
         {/* Filter Buttons (responsive, horizontal chips) */}
         <View className={`bg-white px-6 py-5 border-b border-gray-100`} style={{ paddingHorizontal: s(24), paddingVertical: s(20) }}>
@@ -525,16 +840,16 @@ const Reports = () => {
               <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#EF444420' }}>
                 <Ionicons name="call" size={32} color="#EF4444" />
               </View>
-              <Text className="text-xl font-bold text-gray-900 mb-2 text-center">Call Silang DRRMO?</Text>
-              <Text className="text-gray-600 text-center mb-6 leading-6">
+              <ScaledText baseSize={20} className="font-bold text-gray-900 mb-2 text-center">Call Silang DRRMO?</ScaledText>
+              <ScaledText baseSize={14} className="text-gray-600 text-center mb-6 leading-6">
                 This will call Silang Disaster Risk Reduction and Management Office emergency hotline.
-              </Text>
+              </ScaledText>
               <View className="flex-row gap-3 w-full">
                 <TouchableOpacity
                   onPress={() => setShowCallConfirm(false)}
                   className="flex-1 py-3 rounded-xl items-center bg-gray-200"
                 >
-                  <Text className="text-gray-800 font-semibold text-base">Cancel</Text>
+                  <ScaledText baseSize={16} className="text-gray-800 font-semibold">Cancel</ScaledText>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
@@ -544,7 +859,7 @@ const Reports = () => {
                   className="flex-1 py-3 rounded-xl items-center"
                   style={{ backgroundColor: '#EF4444' }}
                 >
-                  <Text className="text-white font-semibold text-base">Call Now</Text>
+                  <ScaledText baseSize={16} className="text-white font-semibold">Call Now</ScaledText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -560,12 +875,12 @@ const Reports = () => {
               <TouchableOpacity onPress={handleClose} className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center">
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
-              <Text className={`text-3xl font-bold text-black`}>New Report</Text>
+              <ScaledText baseSize={24} className="font-bold text-black">New Report</ScaledText>
               <View className="w-10 h-10" />
             </View>
             <View className="pt-6" />
-            <ScrollView className="flex-1" contentContainerClassName="pb-28" showsVerticalScrollIndicator={false} onScroll={(e) => { scrollYRef.current = e.nativeEvent.contentOffset.y }} scrollEventThrottle={16}>
-              <Text className={`text-sm mb-1 text-gray-600`}>Incident type</Text>
+            <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 80 + Math.max(insets.bottom, 16) }} showsVerticalScrollIndicator={false} onScroll={(e) => { scrollYRef.current = e.nativeEvent.contentOffset.y }} scrollEventThrottle={16}>
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Incident type</ScaledText>
               <View className="relative mb-4">
                 <TouchableOpacity onPress={() => setShowIncidentMenu(v => !v)} className={`border rounded-xl px-4 py-4 border-gray-300 bg-white`}>
                   <View className="flex-row items-center justify-between">
@@ -589,9 +904,9 @@ const Reports = () => {
                           } 
                         />
                       )}
-                      <Text className={`text-lg ml-3 text-black`}>
+                      <ScaledText baseSize={16} className="ml-3 text-black">
                         {incidentType || 'Select incident type'}
-                      </Text>
+                      </ScaledText>
                     </View>
                     <Ionicons name={showIncidentMenu ? 'chevron-up' : 'chevron-down'} size={18} color="#666" />
                   </View>
@@ -607,31 +922,88 @@ const Reports = () => {
                     ].map(opt => (
                       <TouchableOpacity key={opt.type} className={`px-4 py-4 flex-row items-center active:bg-gray-50`} onPress={() => { setIncidentType(opt.type as any); setShowIncidentMenu(false) }}>
                         <Ionicons name={opt.icon} size={20} color={opt.color} />
-                        <Text className={`text-lg ml-3 text-black`}>{opt.type}</Text>
+                        <ScaledText baseSize={16} className="ml-3 text-black">{opt.type}</ScaledText>
                       </TouchableOpacity>
                     ))}
                   </View>
                 )}
               </View>
 
-              <Text className={`text-sm mb-1 text-gray-600`}>Location</Text>
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Location</ScaledText>
               <TouchableOpacity onPress={() => setShowLocationPicker(true)} className={`border rounded-xl px-4 py-4 mb-4 flex-row items-center justify-between border-gray-300 bg-white`}>
-                <Text className={`text-lg ${location ? 'text-black' : 'text-gray-400'}`}>
+                <ScaledText baseSize={16} className={location ? 'text-black' : 'text-gray-400'}>
                   {location || 'Tap to select location on map'}
-                </Text>
+                </ScaledText>
                 <Ionicons name="location" size={22} color="#4A90E2" />
               </TouchableOpacity>
 
-              <Text className={`text-sm mb-1 text-gray-600`}>Urgency</Text>
-              <View className="flex-row gap-3 mb-4">
-                {(['Low','Moderate','High'] as const).map(level => (
-                  <TouchableOpacity key={level} onPress={() => setUrgency(level)} activeOpacity={urgency === level ? 1 : 0.7} className={`px-6 py-3 rounded-full border ${ urgency === level ? (level === 'High' ? 'bg-red-500 border-red-500' : level === 'Moderate' ? 'bg-yellow-500 border-yellow-500' : 'bg-green-500 border-green-500') : 'bg-transparent border-gray-300' }`}>
-                    <Text className={`font-semibold text-lg ${ urgency === level ? 'text-white' : 'text-gray-700' }`}>{level}</Text>
-                  </TouchableOpacity>
-                ))}
+              {/* Limit Status Display */}
+              {limitStatus && (
+                <View className={`mx-4 mb-4 p-3 rounded-lg border-2 ${
+                  limitStatus.limitReached 
+                    ? 'bg-red-50 border-red-300' 
+                    : limitStatus.remaining === 1
+                    ? 'bg-yellow-50 border-yellow-300'
+                    : 'bg-blue-50 border-blue-300'
+                }`}>
+                  <View className="flex-row items-center justify-between">
+                    <ScaledText baseSize={14} className={`font-semibold ${
+                      limitStatus.limitReached ? 'text-red-800' : 'text-gray-800'
+                    }`}>
+                      {limitStatus.limitReached 
+                        ? 'Report limit reached'
+                        : `You have ${limitStatus.remaining} of ${limitStatus.limit} reports left this hour.`
+                      }
+                    </ScaledText>
+                    {isLoadingLimit && (
+                      <ActivityIndicator size="small" color="#4A90E2" />
+                    )}
+                  </View>
+                  {limitStatus.limitReached && (
+                    <ScaledText baseSize={12} className="text-red-600 mt-1">
+                      Please wait before submitting another report.
+                    </ScaledText>
+                  )}
+                </View>
+              )}
+
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Patient Status (AVPU)</ScaledText>
+              <View className="mb-4">
+                <View className="flex-row flex-wrap gap-2 mb-2">
+                  {([
+                    { status: 'Alert', label: 'Alert', color: '#10B981', desc: 'Fully conscious', tagalog: 'Gising at alisto' },
+                    { status: 'Voice', label: 'Voice', color: '#3B82F6', desc: 'Responds to voice', tagalog: 'Tumugon sa tinig' },
+                    { status: 'Pain', label: 'Pain', color: '#F59E0B', desc: 'Responds to pain', tagalog: 'Tumugon sa sakit' },
+                    { status: 'Unresponsive', label: 'Unresponsive', color: '#EF4444', desc: 'No response', tagalog: 'Walang tugon' },
+                  ] as const).map(opt => (
+                    <TouchableOpacity
+                      key={opt.status}
+                      onPress={() => setPatientStatus(opt.status)}
+                      activeOpacity={0.7}
+                      className={`flex-1 min-w-[45%] rounded-xl border-2 p-4 ${
+                        patientStatus === opt.status ? 'border-gray-800' : 'border-gray-200'
+                      }`}
+                      style={{
+                        backgroundColor: patientStatus === opt.status ? opt.color + '20' : '#FFFFFF',
+                      }}
+                    >
+                      <View className="flex-row items-center mb-2">
+                        <View 
+                          className="w-4 h-4 rounded-full mr-2"
+                          style={{ backgroundColor: opt.color }}
+                        />
+                        <ScaledText baseSize={16} className={`font-bold ${patientStatus === opt.status ? 'text-gray-900' : 'text-gray-700'}`}>
+                          {opt.label}
+                        </ScaledText>
+                      </View>
+                      <ScaledText baseSize={12} className="text-gray-600 mb-1">{opt.desc}</ScaledText>
+                      <ScaledText baseSize={11} className="text-gray-500 italic">{opt.tagalog}</ScaledText>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
 
-              <Text className={`text-sm mb-1 text-gray-600`}>Uploaded Media</Text>
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Uploaded Media</ScaledText>
               <View className="mb-2">
                 <View className="flex-row flex-wrap gap-2 mb-2">
                   {media.map((m, idx) => (
@@ -679,17 +1051,28 @@ const Reports = () => {
                 </TouchableOpacity>
               </View>
 
-              <Text className={`text-sm mb-1 text-gray-600`}>Description</Text>
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Description</ScaledText>
               <TextInput placeholder="Describe the incident..." value={description} onChangeText={setDescription} className={`border rounded-xl px-4 py-4 text-lg h-48 border-gray-300 bg-white text-black`} placeholderTextColor="#8E8E93" multiline textAlignVertical="top" />
             </ScrollView>
 
-            <View className="absolute bottom-0 left-0 right-0 p-4">
+            <View className="absolute bottom-0 left-0 right-0 p-4" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
               <View className="flex-row gap-3">
                 <TouchableOpacity onPress={handleClose} className={`flex-1 h-12 rounded-xl items-center justify-center bg-gray-200`}>
-                  <Text className={`font-semibold text-base text-gray-800`}>Cancel</Text>
+                  <ScaledText baseSize={16} className="font-semibold text-gray-800">Cancel</ScaledText>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleSave} disabled={isSubmitting} className={`flex-1 h-12 rounded-xl items-center justify-center ${isSubmitting ? 'bg-gray-400' : 'bg-[#4A90E2]'}`}>
-                  <Text className="text-white font-semibold text-base">{isSubmitting ? 'Submitting...' : 'Submit'}</Text>
+                <TouchableOpacity onPress={handleSaveDraft} disabled={isSubmitting} className={`flex-1 h-12 rounded-xl items-center justify-center ${isSubmitting ? 'bg-gray-400' : 'bg-gray-600'}`}>
+                  <ScaledText baseSize={16} className="text-white font-semibold">{isSubmitting ? 'Saving...' : 'Save Draft'}</ScaledText>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  disabled={isSubmitting || (limitStatus?.limitReached ?? false)} 
+                  onPress={handleSave} 
+                  className={`flex-1 h-12 rounded-xl items-center justify-center ${
+                    (isSubmitting || (limitStatus?.limitReached ?? false)) ? 'bg-gray-400' : 'bg-[#4A90E2]'
+                  }`}
+                >
+                  <ScaledText baseSize={16} className="text-white font-semibold">
+                    {isSubmitting ? 'Submitting...' : (limitStatus?.limitReached ? 'Limit Reached' : 'Submit')}
+                  </ScaledText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -718,8 +1101,10 @@ const Reports = () => {
                 </View>
                 <View className="flex-1">
                   <ScaledText baseSize={22} className={`font-bold mb-1 text-gray-900`}>{selectedReport.incident_type}</ScaledText>
-                  <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_tag) + 'E6' }}>
-                    <ScaledText baseSize={14} className="font-semibold" style={{ color: '#FFFFFF' }}>{selectedReport.urgency_tag.toUpperCase()} PRIORITY</ScaledText>
+                  <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_level || selectedReport.urgency_tag || 'Low') + 'E6' }}>
+                    <ScaledText baseSize={14} className="font-semibold" style={{ color: '#FFFFFF' }}>
+                      {selectedReport.patient_status ? String(selectedReport.patient_status).toUpperCase() : String(selectedReport.urgency_tag || 'Low').toUpperCase()} PRIORITY
+                    </ScaledText>
                   </View>
                 </View>
               </View>
@@ -812,7 +1197,7 @@ const Reports = () => {
 
       <LocationPicker visible={showLocationPicker} onClose={() => setShowLocationPicker(false)} onLocationSelect={handleLocationSelect} initialLocation={selectedLocation || undefined} />
       
-      {/* Confirmation Modal */}
+      {/* Submit Confirmation Modal */}
       <Modal visible={showConfirmSubmit} transparent={true} animationType="fade" onRequestClose={() => setShowConfirmSubmit(false)}>
         <View className="flex-1 justify-center items-center bg-black/50">
           <View className="bg-white rounded-2xl p-6 mx-6 max-w-sm w-full">
@@ -820,21 +1205,51 @@ const Reports = () => {
               <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#2563EB20' }}>
                 <Ionicons name="alert-circle" size={32} color="#2563EB" />
               </View>
-              <Text className="text-xl font-bold text-gray-900 mb-2 text-center">Confirm Submission</Text>
-              <Text className="text-gray-600 text-center mb-6 leading-6">Are you sure you want to submit this report? Please review all details before confirming.</Text>
+              <ScaledText baseSize={20} className="font-bold text-gray-900 mb-2 text-center">Confirm Submission</ScaledText>
+              <ScaledText baseSize={14} className="text-gray-600 text-center mb-6 leading-6">Are you sure you want to submit this report? Please review all details before confirming.</ScaledText>
               <View className="flex-row gap-3 w-full">
                 <TouchableOpacity
                   onPress={() => setShowConfirmSubmit(false)}
                   className="flex-1 py-3 rounded-xl items-center bg-gray-200"
                 >
-                  <Text className="text-gray-800 font-semibold text-base">Cancel</Text>
+                  <ScaledText baseSize={16} className="text-gray-800 font-semibold">Cancel</ScaledText>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={confirmSubmitReport}
                   className="flex-1 py-3 rounded-xl items-center"
                   style={{ backgroundColor: '#4A90E2' }}
                 >
-                  <Text className="text-white font-semibold text-base">Confirm</Text>
+                  <ScaledText baseSize={16} className="text-white font-semibold">Confirm</ScaledText>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Draft Confirmation Modal */}
+      <Modal visible={showConfirmDraft} transparent={true} animationType="fade" onRequestClose={() => setShowConfirmDraft(false)}>
+        <View className="flex-1 justify-center items-center bg-black/50">
+          <View className="bg-white rounded-2xl p-6 mx-6 max-w-sm w-full">
+            <View className="items-center">
+              <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#6B728020' }}>
+                <Ionicons name="document-outline" size={32} color="#6B7280" />
+              </View>
+              <ScaledText baseSize={20} className="font-bold text-gray-900 mb-2 text-center">Save as Draft</ScaledText>
+              <ScaledText baseSize={14} className="text-gray-600 text-center mb-6 leading-6">This will save your report as a draft. You can edit or submit it later from the Drafts screen.</ScaledText>
+              <View className="flex-row gap-3 w-full">
+                <TouchableOpacity
+                  onPress={() => setShowConfirmDraft(false)}
+                  className="flex-1 py-3 rounded-xl items-center bg-gray-200"
+                >
+                  <ScaledText baseSize={16} className="text-gray-800 font-semibold">Cancel</ScaledText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={confirmSaveDraft}
+                  className="flex-1 py-3 rounded-xl items-center"
+                  style={{ backgroundColor: '#6B7280' }}
+                >
+                  <ScaledText baseSize={16} className="text-white font-semibold">Save Draft</ScaledText>
                 </TouchableOpacity>
               </View>
             </View>

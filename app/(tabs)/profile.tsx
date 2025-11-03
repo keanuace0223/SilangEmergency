@@ -85,8 +85,7 @@ const Profile = () => {
   // Animation for refresh icon
   const spinAnim = useRef(new Animated.Value(0)).current
 
-  // Debug logging
-  console.log('Profile component - user:', user, 'isLoading:', isLoading)
+  // Profile component loaded
 
 
   // Refresh profile data
@@ -141,7 +140,7 @@ const Profile = () => {
       setShowLogoutModal(false)
       // Navigate to sign-in screen after successful logout
       router.replace('/(auth)/sign-in')
-      console.log('Logout successful, navigating to sign-in screen')
+      // Logout successful, navigating to sign-in screen
     } catch (error) {
       console.error('Logout error:', error)
     }

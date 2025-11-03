@@ -16,6 +16,7 @@ import { useSettings } from '../../src/context/SettingsContext'
 import { useUser } from '../../src/context/UserContext'
 import { uploadMultipleReportMedia } from '../../src/lib/supabase'
 import { compressImage } from '../../src/utils/imageOptimizer'
+import { offlineStorage } from '../../src/utils/offlineStorage'
 
 const Home = () => {
   const insets = useSafeAreaInsets()
@@ -39,11 +40,19 @@ const Home = () => {
   const [showLocationPicker, setShowLocationPicker] = React.useState(false)
   const [selectedLocation, setSelectedLocation] = React.useState<{ latitude: number; longitude: number; address?: string } | null>(null)
   const [location, setLocation] = React.useState('')
-  const [urgency, setUrgency] = React.useState<'Low' | 'Moderate' | 'High' | ''>('')
+  const [patientStatus, setPatientStatus] = React.useState<'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | ''>('')
+  const [limitStatus, setLimitStatus] = React.useState<{
+    count: number;
+    remaining: number;
+    limitReached: boolean;
+    limit: number;
+  } | null>(null)
+  const [isLoadingLimit, setIsLoadingLimit] = React.useState(false)
   const [description, setDescription] = React.useState('')
   const [media, setMedia] = React.useState<{ uri: string; type?: string; isLoading?: boolean }[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [isOptimizingImages, setIsOptimizingImages] = React.useState(false)
+  const [showConfirmDraft, setShowConfirmDraft] = React.useState(false)
 
   const [reports, setReports] = React.useState<any[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
@@ -209,20 +218,97 @@ const Home = () => {
     setShowIncidentMenu(false)
     setSelectedLocation(null)
     setLocation('')
-    setUrgency('')
+    setPatientStatus('')
     setDescription('')
     setMedia([])
     setIsSubmitting(false)
+    setShowConfirmDraft(false)
   }
+
+  // Fetch limit status when modal opens
+  const fetchLimitStatus = React.useCallback(async () => {
+    if (!user?.id || !showAdd) return;
+    
+    setIsLoadingLimit(true);
+    try {
+      const status = await api.reports.getHourlyStatus(user.id);
+      setLimitStatus(status);
+    } catch (error) {
+      console.warn('Failed to fetch limit status:', error);
+      setLimitStatus({ count: 0, remaining: 3, limitReached: false, limit: 3 });
+    } finally {
+      setIsLoadingLimit(false);
+    }
+  }, [user?.id, showAdd]);
+
+  // Fetch limit status when modal opens
+  React.useEffect(() => {
+    if (showAdd && user?.id) {
+      fetchLimitStatus();
+    }
+  }, [showAdd, user?.id, fetchLimitStatus]);
 
   const handleSubmitReport = () => {
     // Validate first
-    if (!incidentType || !urgency || (!location && !selectedLocation) || !description) {
+    if (!incidentType || !patientStatus || (!location && !selectedLocation) || !description) {
       showModal('Validation error', 'Please fill in all required fields', 'warning', '#EF4444')
       return
     }
     // Show confirmation modal
     setShowConfirmSubmit(true)
+  }
+
+  const handleSaveDraft = () => {
+    // Validate required fields for draft
+    if (!incidentType || !patientStatus || (!location && !selectedLocation) || !description) {
+      showModal('Validation error', 'Please fill in all required fields to save as draft', 'warning', '#EF4444')
+      return
+    }
+    // Show draft confirmation modal
+    setShowConfirmDraft(true)
+  }
+
+  const confirmSaveDraft = async () => {
+    setShowConfirmDraft(false)
+    setIsSubmitting(true)
+    try {
+      if (!user?.id) {
+        showModal('Error', 'User not found', 'warning', '#EF4444')
+        return
+      }
+
+      // Map patientStatus to urgency for backward compatibility
+      const urgencyLevel: 'Low' | 'Moderate' | 'High' = 
+        patientStatus === 'Alert' ? 'Low' :
+        patientStatus === 'Voice' ? 'Moderate' :
+        patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low';
+
+      // Prepare draft data
+      const draftData = {
+        user_id: user.id,
+        incident_type: incidentType,
+        incident_datetime: new Date().toISOString(),
+        location: location || `${selectedLocation?.latitude}, ${selectedLocation?.longitude}`,
+        patient_status: patientStatus as 'Alert' | 'Voice' | 'Pain' | 'Unresponsive',
+        urgency_level: urgencyLevel,
+        urgency_tag: urgencyLevel,
+        description: description,
+        local_media_paths: media.map(m => m.uri),
+        uploaded_media: [] as string[],
+      }
+
+      // Save as draft
+      await offlineStorage.saveDraft(draftData)
+      
+      showModal('Success', 'Report saved as draft successfully!', 'checkmark-circle', '#10B981')
+      setShowAdd(false)
+      resetAddForm()
+    } catch (error) {
+      console.error('Error saving draft:', error)
+      showModal('Error', 'Failed to save draft. Please try again.', 'warning', '#EF4444')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const confirmSubmitReport = async () => {
@@ -245,22 +331,53 @@ const Home = () => {
           showModal('Note', `${skippedVideos} video${skippedVideos > 1 ? 's' : ''} skipped for upload. Images uploaded successfully.`, 'information-circle', '#2563EB')
         }
       }
+      // Check limit before submitting
+      if (!user?.id) {
+        showModal('Not signed in', 'Please sign in again to submit a report.', 'warning', '#EF4444');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      const currentLimit = await api.reports.getHourlyStatus(user.id);
+      if (currentLimit.limitReached) {
+        showModal(
+          'Report limit reached',
+          'You\'ve reached your report limit of 3 reports per hour. Please wait before submitting another report.',
+          'warning',
+          '#EF4444'
+        );
+        setIsSubmitting(false);
+        await fetchLimitStatus(); // Refresh limit status
+        return;
+      }
+
       const payload = {
         incidentType: incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical',
         location: location || `${selectedLocation?.latitude?.toFixed(4)}, ${selectedLocation?.longitude?.toFixed(4)}`,
-        urgency: urgency as 'Low' | 'Moderate' | 'High',
+        patientStatus: patientStatus as 'Alert' | 'Voice' | 'Pain' | 'Unresponsive',
         description,
         mediaUrls,
       }
       if (!user?.id) { showModal('Not signed in', 'Please sign in again to submit a report.', 'warning', '#EF4444'); return }
       await api.reports.create(payload, user.id)
       await fetchReports()
+      await fetchLimitStatus(); // Refresh limit status after submission
       showModal('Report submitted', 'Your report has been submitted successfully.', 'checkmark-circle', '#16A34A')
       setShowAdd(false)
       resetAddForm()
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Failed to submit report'
-      showModal('Submission error', msg, 'warning', '#EF4444')
+    } catch (error: any) {
+      if (error?.status === 429 || error?.code === 'RATE_LIMIT_EXCEEDED') {
+        showModal(
+          'Report limit reached',
+          error.message || 'You\'ve reached your report limit of 3 reports per hour. Please wait before submitting another report.',
+          'warning',
+          '#EF4444'
+        );
+        await fetchLimitStatus(); // Refresh limit status
+      } else {
+        const msg = error instanceof Error ? error.message : 'Failed to submit report'
+        showModal('Submission error', msg, 'warning', '#EF4444')
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -306,7 +423,7 @@ const Home = () => {
   const countsByUrgency = React.useMemo(() => {
     const map: Record<string, number> = { Low: 0, Moderate: 0, High: 0 }
     for (const r of reports) {
-      const key = r.urgency_tag || 'Unknown'
+      const key = r.urgency_level || r.urgency_tag || 'Low'
       map[key] = (map[key] || 0) + 1
     }
     return map
@@ -380,8 +497,10 @@ const Home = () => {
         <View className="flex-1">
           <View className="flex-row items-center justify-between">
             <Text className="text-base font-bold text-gray-900" numberOfLines={1}>{item.incident_type}</Text>
-            <View className="px-2 py-1 rounded-full" style={{ backgroundColor: getUrgencyColor(item.urgency_tag) + 'E6' }}>
-              <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>{String(item.urgency_tag).toUpperCase()}</Text>
+              <View className="px-2 py-1 rounded-full" style={{ backgroundColor: getUrgencyColor(item.urgency_level || item.urgency_tag || 'Low') + 'E6' }}>
+              <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
+                {item.patient_status ? String(item.patient_status).toUpperCase() : String(item.urgency_tag || 'Low').toUpperCase()}
+              </Text>
             </View>
           </View>
           {item.description ? (
@@ -444,7 +563,14 @@ const Home = () => {
             <View className="flex-row items-center">
               <View className="w-20 h-20 rounded-full overflow-hidden bg-gray-100" style={{ marginRight: s(32), width: s(80), height: s(80) }}>
                 {user?.profile_pic ? (
-                  <Image source={{ uri: user.profile_pic }} className="w-full h-full" resizeMode="cover" />
+                  <Image 
+                    source={{ uri: user.profile_pic }} 
+                    className="w-full h-full" 
+                    resizeMode="cover"
+                    onError={() => {
+                      if (__DEV__) console.warn('Profile picture failed to load:', user.profile_pic);
+                    }}
+                  />
                 ) : (
                   <View className="flex-1 items-center justify-center">
                     <Ionicons name="person" size={20} color="#4A90E2" />
@@ -452,9 +578,15 @@ const Home = () => {
                 )}
               </View>
               <View className="flex-1">
-                <Title style={{ color: '#fff' }} numberOfLines={1}>{user?.name || 'User'}</Title>
-                <Body style={{ color: '#E5E7EB', marginTop: 2 }} numberOfLines={1}>Barangay: <Text className="font-medium">{user?.barangay || '—'}</Text></Body>
-                <Body style={{ color: '#E5E7EB' }} numberOfLines={1}>Position: <Text className="font-medium">{user?.barangay_position || '—'}</Text></Body>
+                <Title style={{ color: '#fff' }} numberOfLines={1}>
+                  {user?.name || user?.userid || 'User'}
+                </Title>
+                <Body style={{ color: '#E5E7EB', marginTop: 2 }} numberOfLines={1}>
+                  Barangay: <Text className="font-medium">{user?.barangay || '—'}</Text>
+                </Body>
+                <Body style={{ color: '#E5E7EB' }} numberOfLines={1}>
+                  Position: <Text className="font-medium">{user?.barangay_position || '—'}</Text>
+                </Body>
               </View>
             </View>
           </View>
@@ -569,12 +701,12 @@ const Home = () => {
               <TouchableOpacity onPress={() => { setShowAdd(false); resetAddForm() }} className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center">
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
-              <Text className={`text-3xl font-bold text-black`}>New Report</Text>
+              <ScaledText baseSize={24} className="font-bold text-black">New Report</ScaledText>
               <View className="w-10 h-10" />
             </View>
             <View className="pt-6" />
-            <ScrollView className="flex-1" contentContainerClassName="pb-28" showsVerticalScrollIndicator={false}>
-              <Text className={`text-sm mb-1 text-gray-600`}>Incident type</Text>
+            <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 80 + Math.max(insets.bottom, 16) }} showsVerticalScrollIndicator={false}>
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Incident type</ScaledText>
               <View className="relative mb-4">
                 <TouchableOpacity onPress={() => setShowIncidentMenu((v: boolean) => !v)} className={`border rounded-xl px-4 py-4 border-gray-300 bg-white`}>
                   <View className="flex-row items-center justify-between">
@@ -582,9 +714,9 @@ const Home = () => {
                       {incidentType && (
                         <Ionicons name={getIncidentIcon(incidentType)} size={20} color={getIncidentColor(incidentType)} />
                       )}
-                      <Text className={`text-lg ml-3 text-black`}>
+                      <ScaledText baseSize={16} className="ml-3 text-black">
                         {incidentType || 'Select incident type'}
-                      </Text>
+                      </ScaledText>
                     </View>
                     <Ionicons name={showIncidentMenu ? 'chevron-up' : 'chevron-down'} size={18} color="#666" />
                   </View>
@@ -600,31 +732,88 @@ const Home = () => {
                     ].map(opt => (
                       <TouchableOpacity key={opt.type} className={`px-4 py-4 flex-row items-center active:bg-gray-50`} onPress={() => { setIncidentType(opt.type as any); setShowIncidentMenu(false) }}>
                         <Ionicons name={opt.icon} size={20} color={opt.color} />
-                        <Text className={`text-lg ml-3 text-black`}>{opt.type}</Text>
+                        <ScaledText baseSize={16} className="ml-3 text-black">{opt.type}</ScaledText>
                       </TouchableOpacity>
                     ))}
                   </View>
                 )}
               </View>
 
-              <Text className={`text-sm mb-1 text-gray-600`}>Location</Text>
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Location</ScaledText>
               <TouchableOpacity onPress={() => setShowLocationPicker(true)} className={`border rounded-xl px-4 py-4 mb-4 flex-row items-center justify-between border-gray-300 bg-white`}>
-                <Text className={`text-lg ${location ? 'text-black' : 'text-gray-400'}`}>
+                <ScaledText baseSize={16} className={location ? 'text-black' : 'text-gray-400'}>
                   {location || 'Tap to select location on map'}
-                </Text>
+                </ScaledText>
                 <Ionicons name="location" size={22} color="#4A90E2" />
               </TouchableOpacity>
 
-              <Text className={`text-sm mb-1 text-gray-600`}>Urgency</Text>
-              <View className="flex-row gap-3 mb-4">
-                {(['Low','Moderate','High'] as const).map(level => (
-                  <TouchableOpacity key={level} onPress={() => setUrgency(level)} activeOpacity={urgency === level ? 1 : 0.7} className={`px-6 py-3 rounded-full border ${ urgency === level ? (level === 'High' ? 'bg-red-500 border-red-500' : level === 'Moderate' ? 'bg-yellow-500 border-yellow-500' : 'bg-green-500 border-green-500') : 'bg-transparent border-gray-300' }`}>
-                    <Text className={`font-semibold text-lg ${ urgency === level ? 'text-white' : 'text-gray-700' }`}>{level}</Text>
-                  </TouchableOpacity>
-                ))}
+              {/* Limit Status Display */}
+              {limitStatus && (
+                <View className={`mx-4 mb-4 p-3 rounded-lg border-2 ${
+                  limitStatus.limitReached 
+                    ? 'bg-red-50 border-red-300' 
+                    : limitStatus.remaining === 1
+                    ? 'bg-yellow-50 border-yellow-300'
+                    : 'bg-blue-50 border-blue-300'
+                }`}>
+                  <View className="flex-row items-center justify-between">
+                    <ScaledText baseSize={14} className={`font-semibold ${
+                      limitStatus.limitReached ? 'text-red-800' : 'text-gray-800'
+                    }`}>
+                      {limitStatus.limitReached 
+                        ? 'Report limit reached'
+                        : `You have ${limitStatus.remaining} of ${limitStatus.limit} reports left this hour.`
+                      }
+                    </ScaledText>
+                    {isLoadingLimit && (
+                      <ActivityIndicator size="small" color="#4A90E2" />
+                    )}
+                  </View>
+                  {limitStatus.limitReached && (
+                    <ScaledText baseSize={12} className="text-red-600 mt-1">
+                      Please wait before submitting another report.
+                    </ScaledText>
+                  )}
+                </View>
+              )}
+
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Patient Status (AVPU)</ScaledText>
+              <View className="mb-4">
+                <View className="flex-row flex-wrap gap-2 mb-2">
+                  {([
+                    { status: 'Alert', label: 'Alert', color: '#10B981', desc: 'Fully conscious', tagalog: 'Gising at alisto' },
+                    { status: 'Voice', label: 'Voice', color: '#3B82F6', desc: 'Responds to voice', tagalog: 'Tumugon sa tinig' },
+                    { status: 'Pain', label: 'Pain', color: '#F59E0B', desc: 'Responds to pain', tagalog: 'Tumugon sa sakit' },
+                    { status: 'Unresponsive', label: 'Unresponsive', color: '#EF4444', desc: 'No response', tagalog: 'Walang tugon' },
+                  ] as const).map(opt => (
+                    <TouchableOpacity
+                      key={opt.status}
+                      onPress={() => setPatientStatus(opt.status)}
+                      activeOpacity={0.7}
+                      className={`flex-1 min-w-[45%] rounded-xl border-2 p-4 ${
+                        patientStatus === opt.status ? 'border-gray-800' : 'border-gray-200'
+                      }`}
+                      style={{
+                        backgroundColor: patientStatus === opt.status ? opt.color + '20' : '#FFFFFF',
+                      }}
+                    >
+                      <View className="flex-row items-center mb-2">
+                        <View 
+                          className="w-4 h-4 rounded-full mr-2"
+                          style={{ backgroundColor: opt.color }}
+                        />
+                        <ScaledText baseSize={16} className={`font-bold ${patientStatus === opt.status ? 'text-gray-900' : 'text-gray-700'}`}>
+                          {opt.label}
+                        </ScaledText>
+                      </View>
+                      <ScaledText baseSize={12} className="text-gray-600 mb-1">{opt.desc}</ScaledText>
+                      <ScaledText baseSize={11} className="text-gray-500 italic">{opt.tagalog}</ScaledText>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
 
-              <Text className={`text-sm mb-1 text-gray-600`}>Uploaded Media</Text>
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Uploaded Media</ScaledText>
               <View className="mb-2">
                 <View className="flex-row flex-wrap gap-2 mb-2">
                   {media.map((m, idx) => (
@@ -665,24 +854,35 @@ const Home = () => {
                     {isOptimizingImages && (
                       <ActivityIndicator size="small" color="#4A90E2" style={{ marginRight: 8 }} />
                     )}
-                    <Text className={`font-semibold text-lg ${isOptimizingImages ? 'text-gray-500' : 'text-gray-800'}`}>
+                    <ScaledText baseSize={16} className={`font-semibold ${isOptimizingImages ? 'text-gray-500' : 'text-gray-800'}`}>
                       {isOptimizingImages ? 'Optimizing...' : 'Add photos'}
-                    </Text>
+                    </ScaledText>
                   </View>
                 </TouchableOpacity>
               </View>
 
-              <Text className={`text-sm mb-1 text-gray-600`}>Description</Text>
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Description</ScaledText>
               <TextInput placeholder="Describe the incident..." value={description} onChangeText={setDescription} className={`border rounded-xl px-4 py-4 text-lg h-48 border-gray-300 bg-white text-black`} placeholderTextColor="#8E8E93" multiline textAlignVertical="top" />
             </ScrollView>
 
-            <View className="absolute bottom-0 left-0 right-0 p-4">
+            <View className="absolute bottom-0 left-0 right-0 p-4" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
               <View className="flex-row gap-3">
                 <TouchableOpacity onPress={() => { setShowAdd(false); resetAddForm() }} className={`flex-1 h-12 rounded-xl items-center justify-center bg-gray-200`}>
-                  <Text className={`font-semibold text-base text-gray-800`}>Cancel</Text>
+                  <ScaledText baseSize={16} className="font-semibold text-gray-800">Cancel</ScaledText>
                 </TouchableOpacity>
-                <TouchableOpacity disabled={isSubmitting} onPress={handleSubmitReport} className={`flex-1 h-12 rounded-xl items-center justify-center ${isSubmitting ? 'bg-gray-400' : 'bg-[#4A90E2]'}`}>
-                  <Text className="text-white font-semibold text-base">{isSubmitting ? 'Submitting...' : 'Submit'}</Text>
+                <TouchableOpacity disabled={isSubmitting} onPress={handleSaveDraft} className={`flex-1 h-12 rounded-xl items-center justify-center ${isSubmitting ? 'bg-gray-400' : 'bg-[#6B7280]'}`}>
+                  <ScaledText baseSize={16} className="text-white font-semibold">{isSubmitting ? 'Saving...' : 'Save Draft'}</ScaledText>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  disabled={isSubmitting || (limitStatus?.limitReached ?? false)} 
+                  onPress={handleSubmitReport} 
+                  className={`flex-1 h-12 rounded-xl items-center justify-center ${
+                    (isSubmitting || (limitStatus?.limitReached ?? false)) ? 'bg-gray-400' : 'bg-[#4A90E2]'
+                  }`}
+                >
+                  <ScaledText baseSize={16} className="text-white font-semibold">
+                    {isSubmitting ? 'Submitting...' : (limitStatus?.limitReached ? 'Limit Reached' : 'Submit')}
+                  </ScaledText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -710,8 +910,10 @@ const Home = () => {
                 </View>
                 <View className="flex-1">
                   <Text className={`text-2xl font-bold mb-1 text-gray-900`}>{selectedReport.incident_type}</Text>
-                  <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_tag) + 'E6' }}>
-                    <Text className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>{String(selectedReport.urgency_tag).toUpperCase()} PRIORITY</Text>
+                  <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_level || selectedReport.urgency_tag || 'Low') + 'E6' }}>
+                    <Text className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>
+                      {selectedReport.patient_status ? String(selectedReport.patient_status).toUpperCase() : String(selectedReport.urgency_tag || 'Low').toUpperCase()}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -831,16 +1033,16 @@ const Home = () => {
               <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#EF444420' }}>
                 <Ionicons name="call" size={32} color="#EF4444" />
               </View>
-              <Text className="text-xl font-bold text-gray-900 mb-2 text-center">Call Silang DRRMO?</Text>
-              <Text className="text-gray-600 text-center mb-6 leading-6">
+              <ScaledText baseSize={20} className="font-bold text-gray-900 mb-2 text-center">Call Silang DRRMO?</ScaledText>
+              <ScaledText baseSize={14} className="text-gray-600 text-center mb-6 leading-6">
                 This will call Silang Disaster Risk Reduction and Management Office emergency hotline.
-              </Text>
+              </ScaledText>
               <View className="flex-row gap-3 w-full">
                 <TouchableOpacity
                   onPress={() => setShowCallConfirm(false)}
                   className="flex-1 py-3 rounded-xl items-center bg-gray-200"
                 >
-                  <Text className="text-gray-800 font-semibold text-base">Cancel</Text>
+                  <ScaledText baseSize={16} className="text-gray-800 font-semibold">Cancel</ScaledText>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
@@ -850,7 +1052,7 @@ const Home = () => {
                   className="flex-1 py-3 rounded-xl items-center"
                   style={{ backgroundColor: '#EF4444' }}
                 >
-                  <Text className="text-white font-semibold text-base">Call Now</Text>
+                  <ScaledText baseSize={16} className="text-white font-semibold">Call Now</ScaledText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -866,21 +1068,51 @@ const Home = () => {
               <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#2563EB20' }}>
                 <Ionicons name="alert-circle" size={32} color="#2563EB" />
               </View>
-              <Text className="text-xl font-bold text-gray-900 mb-2 text-center">Confirm Submission</Text>
-              <Text className="text-gray-600 text-center mb-6 leading-6">Are you sure you want to submit this report? Please review all details before confirming.</Text>
+              <ScaledText baseSize={20} className="font-bold text-gray-900 mb-2 text-center">Confirm Submission</ScaledText>
+              <ScaledText baseSize={14} className="text-gray-600 text-center mb-6 leading-6">Are you sure you want to submit this report? Please review all details before confirming.</ScaledText>
               <View className="flex-row gap-3 w-full">
                 <TouchableOpacity
                   onPress={() => setShowConfirmSubmit(false)}
                   className="flex-1 py-3 rounded-xl items-center bg-gray-200"
                 >
-                  <Text className="text-gray-800 font-semibold text-base">Cancel</Text>
+                  <ScaledText baseSize={16} className="text-gray-800 font-semibold">Cancel</ScaledText>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={confirmSubmitReport}
                   className="flex-1 py-3 rounded-xl items-center"
                   style={{ backgroundColor: '#4A90E2' }}
                 >
-                  <Text className="text-white font-semibold text-base">Confirm</Text>
+                  <ScaledText baseSize={16} className="text-white font-semibold">Confirm</ScaledText>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Draft Confirmation Modal */}
+      <Modal visible={showConfirmDraft} transparent={true} animationType="fade" onRequestClose={() => setShowConfirmDraft(false)}>
+        <View className="flex-1 justify-center items-center bg-black/50">
+          <View className="bg-white rounded-2xl p-6 mx-6 max-w-sm w-full">
+            <View className="items-center">
+              <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#6B728020' }}>
+                <Ionicons name="document-outline" size={32} color="#6B7280" />
+              </View>
+              <Text className="text-xl font-bold text-gray-900 mb-2 text-center">Save as Draft</Text>
+              <Text className="text-gray-600 text-center mb-6 leading-6">Are you sure you want to save this report as a draft? You can submit it later from the Drafts screen.</Text>
+              <View className="flex-row gap-3 w-full">
+                <TouchableOpacity
+                  onPress={() => setShowConfirmDraft(false)}
+                  className="flex-1 py-3 rounded-xl items-center bg-gray-200"
+                >
+                  <Text className="text-gray-800 font-semibold text-base">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={confirmSaveDraft}
+                  className="flex-1 py-3 rounded-xl items-center"
+                  style={{ backgroundColor: '#6B7280' }}
+                >
+                  <Text className="text-white font-semibold text-base">Save Draft</Text>
                 </TouchableOpacity>
               </View>
             </View>

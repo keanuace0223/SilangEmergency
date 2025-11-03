@@ -1,13 +1,5 @@
 
 
-export interface CustomInputProps {
-    placeholder?: string,
-    value?: string,
-    onChangeText?: (text: string) => void;
-    label: string,
-    secureTextEntry?: boolean;
-    keyboardType?: "default" | "email-address" | "numeric" | "phone-pad";
-}
 
 // Module shims for Expo packages where types may not be resolved in Metro/TS
 declare module 'expo-image-manipulator' {

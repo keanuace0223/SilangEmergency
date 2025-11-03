@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AppModal from '../../components/AppModal';
 import ScaledText from '../../components/ScaledText';
 import { adminApi, type AdminUser } from '../../src/utils/adminApi';
 
@@ -24,6 +25,8 @@ export default function AdminUsersScreen() {
   const [showPositionMenu, setShowPositionMenu] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [confirmUser, setConfirmUser] = useState<AdminUser | null>(null);
+  const [isResettingLimit, setIsResettingLimit] = useState(false);
 
   const adminUserIds = useMemo(() => ['admin1','admin2','admin3'], []);
 
@@ -90,6 +93,32 @@ export default function AdminUsersScreen() {
     }
   };
 
+  const handleResetLimit = async () => {
+    if (!confirmUser) return;
+    
+    setIsResettingLimit(true);
+    try {
+      const result = await adminApi.resetUserReportLimit(confirmUser.id);
+      
+      if (result.success) {
+        Alert.alert(
+          'Success',
+          `Report limit reset successfully. ${result.count} report${result.count !== 1 ? 's' : ''} moved outside the hourly window.`,
+          [{ text: 'OK', onPress: () => setConfirmUser(null) }]
+        );
+      } else {
+        Alert.alert('Error', 'Failed to reset report limit. Please try again.');
+      }
+    } catch (error: any) {
+      Alert.alert(
+        'Error',
+        error?.message || 'Failed to reset report limit. Please try again.'
+      );
+    } finally {
+      setIsResettingLimit(false);
+    }
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top','bottom']}>
       <View className="bg-white px-6 py-4 border-b border-gray-100">
@@ -133,16 +162,45 @@ export default function AdminUsersScreen() {
                       <Text className="text-xs text-gray-500 mt-1">Reports: {(item as any).reportCount}</Text>
                     ) : null}
                   </View>
-                  <TouchableOpacity onPress={() => router.push({ pathname: '/(admin)/user-reports', params: { userId: item.id } })} className="px-3 py-2 rounded-lg bg-[#4A90E2] flex-row items-center">
-                    <Ionicons name="document-text" size={16} color="#fff" />
-                    <Text className="text-white font-semibold ml-2">View Reports</Text>
-                  </TouchableOpacity>
+                  <View className="flex-row gap-2">
+                    <TouchableOpacity onPress={() => setConfirmUser(item)} className="px-3 py-2 rounded-lg bg-gray-500 flex-row items-center">
+                      <Ionicons name="refresh" size={16} color="#fff" />
+                      <Text className="text-white font-semibold ml-2">Reset Limit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => router.push({ pathname: '/(admin)/user-reports', params: { userId: item.id } })} className="px-3 py-2 rounded-lg bg-[#4A90E2] flex-row items-center">
+                      <Ionicons name="document-text" size={16} color="#fff" />
+                      <Text className="text-white font-semibold ml-2">View Reports</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             ))
           )}
         </ScrollView>
       )}
+
+      {/* Reset Limit Confirmation Modal */}
+      <AppModal
+        visible={confirmUser !== null}
+        onClose={() => !isResettingLimit && setConfirmUser(null)}
+        icon="alert-circle"
+        iconColor="#F59E0B"
+        title="Reset Report Limit?"
+        message={confirmUser ? `Are you sure you want to reset the hourly report limit for ${confirmUser.name}? This will allow them to submit 3 more reports immediately.` : ''}
+        actions={[
+          {
+            label: 'Cancel',
+            onPress: () => setConfirmUser(null),
+            variant: 'secondary'
+          },
+          {
+            label: isResettingLimit ? 'Resetting...' : 'Confirm',
+            onPress: handleResetLimit,
+            variant: 'primary',
+            disabled: isResettingLimit
+          }
+        ]}
+      />
 
       {/* Add User Modal */}
       <Modal visible={addVisible} animationType="slide" onRequestClose={() => { if (!submitting) { setAddVisible(false); resetForm(); } }}>

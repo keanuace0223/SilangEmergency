@@ -1,7 +1,7 @@
 /**
  * Image optimization utilities for faster image loading and upload
  */
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 
 interface OptimizedImage {

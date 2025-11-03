@@ -3,14 +3,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-    Animated,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    TextInput,
-    TouchableOpacity,
-    View
+  Animated,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppModal from '../../components/AppModal';
@@ -18,7 +18,6 @@ import MultiDeviceLoginModal from '../../components/MultiDeviceLoginModal';
 import ScaledText from '../../components/ScaledText';
 import { images } from '../../constants/images';
 import { useUser } from '../../src/context/UserContext';
-import { auth, db } from '../../src/lib/supabase';
 import { sessionManager, type ActiveSession } from '../../src/utils/sessionManager';
 import '../global.css';
 
@@ -87,59 +86,136 @@ export default function SignInScreen() {
   // removed: handleForceLogin (force login disabled)
 
   const performLogin = async (userIDValue: string, passwordValue: string, forceSingleSession: boolean = false) => {
-    console.log('Attempting login with:', { userID: userIDValue, password: '***', forceSingleSession });
-
-    // 1) Create a real Supabase session via email alias so RLS works
-    const { data: sessionData, error: aliasErr } = await auth.signInWithUseridAlias(userIDValue, passwordValue);
-    if (aliasErr || !sessionData?.user) {
-      const msg = 'Invalid credentials';
-      setErrorMessage(msg);
+    // 1) Authenticate - use auth helper from supabase.ts for consistent session handling
+    const { auth, supabase } = await import('../../src/lib/supabase');
+    
+    // Sign in using the auth helper which creates a real Supabase session via email alias
+    const { data: authData, error: aliasErr } = await auth.signInWithUseridAlias(userIDValue, passwordValue);
+    
+    if (aliasErr || !authData?.user) {
+      setErrorMessage('Invalid credentials');
       setMessageTitle('Sign in failed');
-      setMessageText(msg);
+      setMessageText('Invalid credentials');
       setMessageIcon('warning');
       setMessageIconColor('#EF4444');
       setMessageVisible(true);
       return;
     }
 
-    // 2) Load or create profile using the authenticated user id
-    const userId = sessionData.user.id;
-    let { data: profile } = await db.getUser(userId);
-    if (!profile) {
-      const useridAlias = userIDValue;
-      const fallbackName = useridAlias;
-      const upsert = await db.upsertUser({ id: userId, userid: useridAlias, name: fallbackName, barangay: '', barangay_position: '' });
-      profile = upsert.data || null;
+    const authUserId = authData.user.id;
+
+    // Set the session from signIn response
+    if (authData.session) {
+      try {
+        await supabase.auth.setSession({
+          access_token: authData.session.access_token,
+          refresh_token: authData.session.refresh_token,
+        });
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } catch (sessionErr) {
+        console.warn('Failed to set session:', sessionErr);
+      }
     }
-    if (!profile) {
-      const msg = 'Failed to load user profile.';
-      setErrorMessage(msg);
-      setMessageTitle('Sign in error');
-      setMessageText(msg);
-      setMessageIcon('warning');
-      setMessageIconColor('#EF4444');
-      setMessageVisible(true);
-      return;
+    
+    // Verify session is loaded
+    let sessionReady = false;
+    for (let i = 0; i < 10; i++) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        
+        if (sess?.session?.user?.id === authUserId && sess.session.access_token) {
+          sessionReady = true;
+          break;
+        }
+      } catch (err) {
+        // Continue retrying
+      }
     }
 
-    // 3) Clean up orphaned sessions first (sessions from deleted apps)
+    // Query profile with retries
+    let profile: any = null;
+    
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      try {
+        const { data: sessionCheck } = await supabase.auth.getSession();
+        const actualAuthUid = sessionCheck?.session?.user?.id;
+        const hasAccessToken = !!sessionCheck?.session?.access_token;
+        
+        // If session is not available, wait and retry
+        if (!hasAccessToken || !actualAuthUid) {
+          if (attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            continue;
+          }
+        }
+        
+        // If session is missing, set it from signIn response
+        if (!hasAccessToken && authData.session) {
+          try {
+            await supabase.auth.setSession({
+              access_token: authData.session.access_token,
+              refresh_token: authData.session.refresh_token,
+            });
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (setErr) {
+            console.warn('Failed to set session:', setErr);
+          }
+        }
+        
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', authUserId)
+          .maybeSingle();
+        
+        if (error) {
+          if (__DEV__) {
+            console.error('Profile query error:', error.message);
+          }
+        } else if (data) {
+          profile = data;
+          break;
+        }
+      } catch (err) {
+        if (__DEV__) {
+          console.error('Profile query exception:', err);
+        }
+      }
+    }
+
+    // If no profile found, create minimal one
+    if (!profile) {
+      profile = {
+        id: authUserId,
+        userid: userIDValue,
+        name: userIDValue,
+        barangay: '',
+        barangay_position: '',
+        profile_pic: null
+      };
+    }
+
+    // Clean up orphaned sessions
     try {
-      await sessionManager.cleanupOrphanedSessions(userId);
+      await sessionManager.cleanupOrphanedSessions(authUserId);
     } catch (error) {
       console.warn('Failed to cleanup orphaned sessions:', error);
     }
 
-    // 4) Check for existing sessions (strict single-session; no force login)
+    // Check for existing sessions (strict single-session; no force login)
     if (!forceSingleSession) {
       try {
-        const sessionCheck = await sessionManager.checkActiveSessions(userId);
+        const sessionCheck = await sessionManager.checkActiveSessions(authUserId);
         if (sessionCheck.sessionCount > 0) {
-          console.log('Multiple active sessions detected:', sessionCheck);
           setActiveSessions(sessionCheck.activeSessions);
-          // Do not preserve pending creds; force login disabled
           setMultiDeviceModalVisible(true);
-          // End auth session we just created since login is not allowed
-          try { await auth.signOut(); } catch {}
+          try { await supabase.auth.signOut(); } catch {}
           return;
         }
       } catch (error) {
@@ -147,14 +223,13 @@ export default function SignInScreen() {
       }
     }
 
-    // 5) Create session tracking (no force deactivation allowed)
+    // Create session tracking
     try {
-      const created = await sessionManager.createSession(userId, false);
+      const created = await sessionManager.createSession(authUserId, false);
       if (!created.success && created.existingSessions > 0) {
-        setActiveSessions(await sessionManager.getUserSessions(userId));
-        // Do not preserve pending creds; force login disabled
+        setActiveSessions(await sessionManager.getUserSessions(authUserId));
         setMultiDeviceModalVisible(true);
-        try { await auth.signOut(); } catch {}
+        try { await supabase.auth.signOut(); } catch {}
         return;
       }
       sessionManager.startHeartbeat();
@@ -162,24 +237,45 @@ export default function SignInScreen() {
       console.warn('Failed to create session tracking:', error);
     }
 
-    // 6) Persist token and user data
-    const accessToken = sessionData.session?.access_token || 'supabase-session';
+    // Save user data to storage and refresh context
+    const { data: currentSession } = await supabase.auth.getSession();
+    const accessToken = authData.session?.access_token || currentSession?.session?.access_token || 'supabase-session';
     await AsyncStorage.setItem('authToken', accessToken);
+    
     const persistedUser = {
       id: profile.id,
       userID: profile.userid,
-      name: profile.name,
-      email: sessionData.session?.user?.email || `${profile.userid}@login.local`, // Include email for admin check
-      barangay: profile.barangay,
-      barangay_position: profile.barangay_position,
+      name: profile.name || profile.userid || userIDValue,
+      email: `${profile.userid || userIDValue}@login.local`,
+      barangay: profile.barangay || '',
+      barangay_position: profile.barangay_position || '',
       profile_pic: profile.profile_pic || null,
     };
     
-    console.log('Sign-in - Persisting user data:', persistedUser);
-    console.log('Sign-in - User email for admin check:', persistedUser.email);
+    // Clear cache before saving new profile data
+    try {
+      await AsyncStorage.multiRemove(['userData', 'user', 'authToken']);
+    } catch (err) {
+      console.warn('Failed to clear cache:', err);
+    }
     
+    // Save new profile data
     await AsyncStorage.setItem('userData', JSON.stringify(persistedUser));
-    try { await refreshUser(); } catch {}
+    
+    // Refresh user context
+    try { 
+      await refreshUser(); 
+      setTimeout(async () => {
+        try {
+          await refreshUser();
+        } catch (err) {
+          // Silent fail on delayed refresh
+        }
+      }, 1000);
+    } catch (err) {
+      console.warn('Failed to refresh user context:', err);
+    }
+    
     setSuccessVisible(true);
   };
 

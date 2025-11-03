@@ -34,25 +34,33 @@ class SessionManager {
   private heartbeatInterval: any | null = null;
   private currentSessionId: string | null = null;
 
-  // Check for active sessions for a user using Supabase user_sessions
+  // Check for active sessions for a user using Supabase user_sessions via RPC
   async checkActiveSessions(userId: string): Promise<SessionCheckResult> {
     try {
-      const { data, error } = await supabase
-        .from('user_sessions')
-        .select('id, last_activity, created_at, ip_address, device_info')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .order('last_activity', { ascending: false });
+      const { data, error } = await supabase.rpc('check_active_sessions', {
+        p_user_id: userId
+      });
+      
       if (error) throw error;
-      const sessions: ActiveSession[] = (data || []).map((row: any) => ({
-        id: row.id,
-        device_info: row.device_info || {},
-        ip_address: row.ip_address || undefined,
-        last_activity: row.last_activity,
-        created_at: row.created_at,
-      }));
-      return { sessionCount: sessions.length, activeSessions: sessions };
-    } catch {
+      
+      // The RPC returns { session_count: number, active_sessions: JSONB }
+      const sessionCount = data?.session_count || 0;
+      const activeSessionsJson = data?.active_sessions || [];
+      
+      // Parse the JSONB array into ActiveSession[]
+      const sessions: ActiveSession[] = Array.isArray(activeSessionsJson)
+        ? activeSessionsJson.map((row: any) => ({
+            id: row.id,
+            device_info: row.device_info || {},
+            ip_address: row.ip_address || undefined,
+            last_activity: row.last_activity,
+            created_at: row.created_at,
+          }))
+        : [];
+      
+      return { sessionCount, activeSessions: sessions };
+    } catch (error) {
+      console.warn('Failed to check active sessions via RPC:', error);
       // Fail open: if we cannot verify (e.g., RLS not yet configured), let insert guard handle it
       return { sessionCount: 0, activeSessions: [] };
     }
@@ -60,90 +68,153 @@ class SessionManager {
 
   // Create a new session; optionally force single session by deactivating others
   async createSession(userId: string, forceSingleSession: boolean = false): Promise<SessionCreateResult> {
-    // Deactivate other active sessions when forcing
-    if (forceSingleSession) {
-      await supabase
-        .from('user_sessions')
-        .update({ is_active: false })
-        .eq('user_id', userId)
-        .eq('is_active', true);
-    } else {
-      // Guard: if other sessions exist, surface to caller
-      const check = await this.checkActiveSessions(userId);
-      if (check.sessionCount > 0) {
+    try {
+      const deviceInfo = await this.getDeviceInfo();
+      
+      // Get the current Supabase access token (this is the session_token used in the database)
+      let sessionTokenValue = '';
+      try {
+        const { data: s } = await supabase.auth.getSession();
+        sessionTokenValue = s?.session?.access_token || '';
+        if (!sessionTokenValue) {
+          throw new Error('No active Supabase session token available');
+        }
+      } catch (error) {
+        console.warn('Failed to get Supabase session token:', error);
         return {
           success: false,
           sessionToken: '',
           sessionId: '',
-          existingSessions: check.sessionCount,
-          deviceInfo: {},
+          existingSessions: 0,
+          deviceInfo,
           ipAddress: ''
         };
       }
-    }
 
-    const deviceInfo = await this.getDeviceInfo();
-    // Try to capture the current Supabase access token for traceability
-    let sessionTokenValue = '';
-    try {
-      const { data: s } = await supabase.auth.getSession();
-      sessionTokenValue = s?.session?.access_token || '';
-    } catch {}
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from('user_sessions')
-      .insert({
-        user_id: userId,
-        is_active: true,
-        last_activity: now,
-        device_info: deviceInfo,
-        session_token: sessionTokenValue || null,
-      })
-      .select('id, ip_address')
-      .single();
-    if (error) {
-      // Surface details to help diagnose RLS/constraint issues
-      console.warn('createSession insert error:', error);
-      const code = (error as any)?.code || (error as any)?.details || '';
-      const isUnique = String(code).includes('23505') || String((error as any)?.message || '').toLowerCase().includes('unique');
+      // If not forcing single session, check for existing sessions first
+      // The SQL function always creates a session, so we need to prevent that if not forcing
+      if (!forceSingleSession) {
+        const checkResult = await this.checkActiveSessions(userId);
+        if (checkResult.sessionCount > 0) {
+          return {
+            success: false,
+            sessionToken: sessionTokenValue,
+            sessionId: '',
+            existingSessions: checkResult.sessionCount,
+            deviceInfo,
+            ipAddress: ''
+          };
+        }
+      }
+
+      // Call the PostgreSQL function via RPC
+      // Note: The SQL function will handle deactivating existing sessions if force_single_session is true
+      const { data, error } = await supabase.rpc('create_user_session', {
+        p_user_id: userId,
+        p_session_token: sessionTokenValue,
+        p_device_info: deviceInfo,
+        p_ip_address: null, // IP address is typically captured server-side
+        p_user_agent: 'React Native',
+        p_force_single_session: forceSingleSession
+      });
+
+      if (error) {
+        console.warn('createSession RPC error:', error);
+        return {
+          success: false,
+          sessionToken: sessionTokenValue,
+          sessionId: '',
+          existingSessions: 0,
+          deviceInfo,
+          ipAddress: ''
+        };
+      }
+
+      // The RPC returns { success: boolean, existing_sessions: integer, session_id: uuid }
+      const success = data?.success ?? false;
+      const sessionId = data?.session_id || null;
+
+      if (!success || !sessionId) {
+        return {
+          success: false,
+          sessionToken: sessionTokenValue,
+          sessionId: sessionId || '',
+          existingSessions: data?.existing_sessions ?? 0,
+          deviceInfo,
+          ipAddress: ''
+        };
+      }
+
+      // Store both session_token and session_id for reference
+      this.sessionToken = sessionTokenValue;
+      this.currentSessionId = sessionId;
+      await AsyncStorage.setItem('sessionToken', sessionTokenValue);
+      await AsyncStorage.setItem('sessionId', sessionId);
+
+      return {
+        success: true,
+        sessionToken: sessionTokenValue,
+        sessionId: sessionId,
+        existingSessions: 0,
+        deviceInfo,
+        ipAddress: '' // IP address not returned by RPC, but could be queried if needed
+      };
+    } catch (error) {
+      console.warn('createSession error:', error);
+      const deviceInfo = await this.getDeviceInfo();
       return {
         success: false,
         sessionToken: '',
         sessionId: '',
-        existingSessions: isUnique ? 1 : 0,
+        existingSessions: 0,
         deviceInfo,
         ipAddress: ''
       };
     }
-    this.currentSessionId = data?.id || null;
-    await AsyncStorage.setItem('sessionId', String(this.currentSessionId));
-    // Optional: store token analogue for parity
-    this.sessionToken = String(this.currentSessionId);
-    return {
-      success: true,
-      sessionToken: this.sessionToken,
-      sessionId: this.currentSessionId || '',
-      existingSessions: 0,
-      deviceInfo,
-      ipAddress: data?.ip_address || ''
-    };
   }
 
   // Terminate current session
   async terminateSession(sessionToken?: string): Promise<boolean> {
     try {
-      const id = sessionToken || this.currentSessionId || (await AsyncStorage.getItem('sessionId')) || '';
-      if (!id) return true;
-      await supabase
-        .from('user_sessions')
-        .update({ is_active: false })
-        .eq('id', id);
+      // Use the provided session_token or get it from storage
+      const token = sessionToken || this.sessionToken || (await AsyncStorage.getItem('sessionToken')) || '';
+      if (!token) {
+        // If no token but we have sessionId, we can't terminate via RPC
+        // Clear local state anyway
+        this.currentSessionId = null;
+        this.sessionToken = null;
+        await AsyncStorage.removeItem('sessionId');
+        await AsyncStorage.removeItem('sessionToken');
+        this.stopHeartbeat();
+        return true;
+      }
+
+      // Call the PostgreSQL function via RPC
+      const { data, error } = await supabase.rpc('terminate_user_session', {
+        p_session_token: token
+      });
+
+      if (error) {
+        console.warn('terminateSession RPC error:', error);
+      }
+
+      // Clear local state regardless of RPC result
       this.currentSessionId = null;
       this.sessionToken = null;
       await AsyncStorage.removeItem('sessionId');
+      await AsyncStorage.removeItem('sessionToken');
       this.stopHeartbeat();
-      return true;
-    } catch {
+      
+      // Return true if RPC succeeded, or if no token was found (already cleared)
+      return data ?? true;
+    } catch (error) {
+      console.warn('terminateSession error:', error);
+      // Still clear local state on error
+      this.currentSessionId = null;
+      this.sessionToken = null;
+      await AsyncStorage.removeItem('sessionId');
+      await AsyncStorage.removeItem('sessionToken');
+      this.stopHeartbeat();
       return false;
     }
   }
@@ -151,15 +222,24 @@ class SessionManager {
   // Update session activity (heartbeat)
   async updateActivity(): Promise<boolean> {
     try {
-      const id = this.currentSessionId || (await AsyncStorage.getItem('sessionId')) || '';
-      if (!id) return false;
-      await supabase
-        .from('user_sessions')
-        .update({ last_activity: new Date().toISOString() })
-        .eq('id', id)
-        .eq('is_active', true);
-      return true;
-    } catch {
+      // Get the session_token from storage or current state
+      const token = this.sessionToken || (await AsyncStorage.getItem('sessionToken')) || '';
+      if (!token) return false;
+
+      // Call the PostgreSQL function via RPC
+      const { data, error } = await supabase.rpc('update_session_activity', {
+        p_session_token: token
+      });
+
+      if (error) {
+        console.warn('updateActivity RPC error:', error);
+        return false;
+      }
+
+      // RPC returns boolean indicating if session was found and updated
+      return data ?? false;
+    } catch (error) {
+      console.warn('updateActivity error:', error);
       return false;
     }
   }
@@ -183,30 +263,42 @@ class SessionManager {
   // Initialize from storage and validate session
   async initialize(): Promise<void> {
     this.currentSessionId = (await AsyncStorage.getItem('sessionId')) || null;
+    this.sessionToken = (await AsyncStorage.getItem('sessionToken')) || null;
     
-    // If we have a session ID, validate it's still active
-    if (this.currentSessionId) {
+    // If we have a session token, validate it's still active
+    if (this.sessionToken) {
       try {
-        // Check both our custom session and Supabase auth session
-        const [sessionData, authSession] = await Promise.all([
-          supabase
-            .from('user_sessions')
-            .select('id, is_active, expires_at')
-            .eq('id', this.currentSessionId)
-            .single(),
-          supabase.auth.getSession()
-        ]);
-        
-        const { data, error } = sessionData;
+        // Check both our custom session (via Supabase auth session token) and Supabase auth session
+        const authSession = await supabase.auth.getSession();
         const { data: authData } = authSession;
         
-        // If session doesn't exist, is inactive, expired, or Supabase session is invalid, clear it
-        if (error || !data || !data.is_active || new Date(data.expires_at) < new Date() || !authData?.session) {
-          console.log('Stored session is invalid, clearing...');
+        // Verify the stored session_token matches the current Supabase session token
+        const currentAuthToken = authData?.session?.access_token || null;
+        
+        if (!currentAuthToken || currentAuthToken !== this.sessionToken) {
+          // Session token mismatch - Supabase session changed or expired
+          console.log('Stored session token mismatch or Supabase session invalid, clearing...');
           this.currentSessionId = null;
           this.sessionToken = null;
           await AsyncStorage.removeItem('sessionId');
-          // Also clear auth token if Supabase session is invalid
+          await AsyncStorage.removeItem('sessionToken');
+          if (!authData?.session) {
+            await AsyncStorage.removeItem('authToken');
+          }
+          return;
+        }
+
+        // Validate the session is still active by attempting to update activity
+        // This implicitly checks if the session exists and is active
+        const isActive = await this.updateActivity();
+        
+        if (!isActive) {
+          // Session is not active in the database
+          console.log('Stored session is not active in database, clearing...');
+          this.currentSessionId = null;
+          this.sessionToken = null;
+          await AsyncStorage.removeItem('sessionId');
+          await AsyncStorage.removeItem('sessionToken');
           if (!authData?.session) {
             await AsyncStorage.removeItem('authToken');
           }
@@ -217,8 +309,14 @@ class SessionManager {
         this.currentSessionId = null;
         this.sessionToken = null;
         await AsyncStorage.removeItem('sessionId');
+        await AsyncStorage.removeItem('sessionToken');
         await AsyncStorage.removeItem('authToken');
       }
+    } else if (this.currentSessionId) {
+      // Legacy: if we only have sessionId but no token, clear it
+      // This handles migration from old format
+      this.currentSessionId = null;
+      await AsyncStorage.removeItem('sessionId');
     }
   }
 
@@ -235,20 +333,28 @@ class SessionManager {
     await AsyncStorage.removeItem('sessionToken');
     await AsyncStorage.removeItem('sessionId');
   }
+  
+  // Get session token (for external use)
+  getSessionToken(): string | null {
+    return this.sessionToken;
+  }
+  
+  // Get session ID (for external use)
+  getSessionId(): string | null {
+    return this.currentSessionId;
+  }
 
   // Clean up orphaned sessions for a user (useful when app is deleted/reinstalled)
   async cleanupOrphanedSessions(userId: string): Promise<void> {
     try {
-      // Deactivate all sessions for this user that are older than 1 hour
-      // This helps clean up sessions from deleted apps
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      // Call the PostgreSQL function via RPC
+      // Note: The function doesn't take userId parameter, it cleans up all orphaned sessions
+      // This is by design - it's a cleanup function that runs server-side
+      const { error } = await supabase.rpc('cleanup_orphaned_sessions');
       
-      await supabase
-        .from('user_sessions')
-        .update({ is_active: false })
-        .eq('user_id', userId)
-        .lt('last_activity', oneHourAgo)
-        .eq('is_active', true);
+      if (error) {
+        console.warn('cleanupOrphanedSessions RPC error:', error);
+      }
     } catch (error) {
       console.warn('Failed to cleanup orphaned sessions:', error);
     }

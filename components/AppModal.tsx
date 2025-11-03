@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons'
 import React from 'react'
-import { Modal, Text, TouchableOpacity, View } from 'react-native'
+import { Modal, TouchableOpacity, View } from 'react-native'
+import ScaledText from './ScaledText'
 
 interface Action {
   label: string
   onPress?: () => void
   variant?: 'primary' | 'secondary' | 'danger'
+  disabled?: boolean
 }
 
 interface AppModalProps {
@@ -27,13 +29,26 @@ const AppModal: React.FC<AppModalProps> = ({ visible, onClose, icon = 'informati
             <View className="w-16 h-16 rounded-full items-center justify-center mb-3" style={{ backgroundColor: '#EFF6FF' }}>
               <Ionicons name={icon} size={28} color={iconColor} />
             </View>
-            <Text className="text-xl font-bold text-gray-900 mb-1">{title}</Text>
-            <Text className="text-gray-600 text-center">{message}</Text>
+            <ScaledText baseSize={20} className="font-bold text-gray-900 mb-1">{title}</ScaledText>
+            <ScaledText baseSize={14} className="text-gray-600 text-center">{message}</ScaledText>
           </View>
           <View className="flex-row gap-3 mt-2">
             {actions.map((a, idx) => (
-              <TouchableOpacity key={idx} onPress={a.onPress || onClose} className={`flex-1 rounded-xl py-3 items-center ${a.variant === 'danger' ? 'bg-red-500' : a.variant === 'secondary' ? 'bg-gray-100' : 'bg-[#4A90E2]'}`}>
-                <Text className={`${a.variant === 'secondary' ? 'text-gray-800' : 'text-white'} font-medium text-base`}>{a.label}</Text>
+              <TouchableOpacity 
+                key={idx} 
+                onPress={a.disabled ? undefined : (a.onPress || onClose)} 
+                disabled={a.disabled}
+                className={`flex-1 rounded-xl py-3 items-center ${
+                  a.disabled 
+                    ? 'bg-gray-400' 
+                    : a.variant === 'danger' 
+                    ? 'bg-red-500' 
+                    : a.variant === 'secondary' 
+                    ? 'bg-gray-100' 
+                    : 'bg-[#4A90E2]'
+                }`}
+              >
+                <ScaledText baseSize={16} className={`${a.variant === 'secondary' && !a.disabled ? 'text-gray-800' : 'text-white'} font-medium`}>{a.label}</ScaledText>
               </TouchableOpacity>
             ))}
           </View>

@@ -23,6 +23,8 @@ interface UserContextType {
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   isLoading: boolean;
+  refreshKey: number;
+  triggerRefresh: () => void;
 }
 
 // Helper function to get cached or fresh signed URL
@@ -58,6 +60,7 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const loadUser = useCallback(async () => {
     try {
@@ -132,8 +135,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Sign out from Supabase
       try {
-        const { auth } = await import('../lib/supabase');
-        await auth.signOut();
+        const { supabase } = await import('../lib/supabase');
+        await supabase.auth.signOut();
       } catch (error) {
         console.warn('Failed to sign out from Supabase:', error);
       }
@@ -159,8 +162,12 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadUser();
   }, [loadUser]);
 
+  const triggerRefresh = useCallback(() => {
+    setRefreshKey(prevKey => prevKey + 1);
+  }, []);
+
   return (
-    <UserContext.Provider value={{ user, login, logout, refreshUser, isLoading }}>
+    <UserContext.Provider value={{ user, login, logout, refreshUser, isLoading, refreshKey, triggerRefresh }}>
       {children}
     </UserContext.Provider>
   );

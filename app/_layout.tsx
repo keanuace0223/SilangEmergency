@@ -1,12 +1,19 @@
 import * as NavigationBar from 'expo-navigation-bar';
 import { Stack, usePathname } from "expo-router";
+import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from "react";
+import { AuthProvider, useAuth } from '../src/context/AuthContext';
 import { SettingsProvider } from '../src/context/SettingsContext';
+import { SyncProvider } from '../src/context/SyncContext';
 import { UserProvider } from '../src/context/UserContext';
 import './global.css';
 
-export default function RootLayout() {
+// Prevent the splash screen from auto-hiding until auth/session is resolved
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
+function RootNavigator() {
   const pathname = usePathname();
+  const { isLoading, session } = useAuth();
 
   useEffect(() => {
     // Default nav bar background and icons
@@ -51,15 +58,40 @@ export default function RootLayout() {
     })();
   }, [pathname]);
 
+  useEffect(() => {
+    if (!isLoading) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [isLoading]);
+
+  if (isLoading) {
+    return null;
+  }
+
   return (
-      <SettingsProvider>
+    <Stack screenOptions={{headerShown: false}}>
+      {session ? (
+        <>
+          <Stack.Screen name="(admin)" options={{ headerShown: false }}/>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }}/>
+        </>
+      ) : (
+        <Stack.Screen name="(auth)" options={{ headerShown: false }}/>
+      )}
+    </Stack>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <SettingsProvider>
+      <AuthProvider>
         <UserProvider>
-          <Stack screenOptions={{headerShown: false}}>
-            <Stack.Screen name="(auth)" options={{ headerShown: false }}/>
-            <Stack.Screen name="(admin)" options={{ headerShown: false }}/>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }}/>
-          </Stack>
+          <SyncProvider>
+            <RootNavigator />
+          </SyncProvider>
         </UserProvider>
-      </SettingsProvider>
-  )
+      </AuthProvider>
+    </SettingsProvider>
+  );
 }
