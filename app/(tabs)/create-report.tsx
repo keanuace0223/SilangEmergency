@@ -498,6 +498,60 @@ const CreateReport = () => {
   
   const AVPUButton = React.memo(AVPUButtonComponent)
 
+  // Memoized urgency button component to prevent NativeWind from processing during state updates
+  const UrgencyButtonComponent = ({ opt, isSelected, onPress }: { 
+    opt: { level: 'Low' | 'Moderate' | 'High', color: string, icon: string, label: string }, 
+    isSelected: boolean, 
+    onPress: () => void 
+  }) => {
+    const baseClassName = 'flex-1 min-w-[48%] rounded-xl border p-3'
+    const selectedClassName = 'shadow-lg'
+    const unselectedClassName = 'bg-white border-gray-300'
+    
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.8}
+        className={isSelected ? `${baseClassName} ${selectedClassName}` : `${baseClassName} ${unselectedClassName}`}
+        style={isSelected ? {
+          backgroundColor: opt.color,
+          borderColor: opt.color,
+          shadowColor: opt.color,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 5,
+          elevation: 8,
+        } : {}}
+      >
+        <View className="flex-row items-center mb-1">
+          <Ionicons
+            name={opt.icon as any}
+            size={20}
+            color={isSelected ? 'white' : opt.color}
+            style={{ marginRight: 8 }}
+          />
+          <ScaledText
+            baseSize={18}
+            className={isSelected ? 'font-semibold text-white' : 'font-semibold text-gray-900'}
+          >
+            {opt.label}
+          </ScaledText>
+        </View>
+      </TouchableOpacity>
+    )
+  }
+  
+  UrgencyButtonComponent.displayName = 'UrgencyButton'
+  
+  const UrgencyButton = React.memo(UrgencyButtonComponent)
+
+  // Memoize urgency options to prevent re-creation on every render
+  const urgencyOptions = React.useMemo(() => [
+    { level: 'Low' as const, color: '#10B981', icon: 'checkmark-circle-outline' as const, label: 'Low' },
+    { level: 'Moderate' as const, color: '#F59E0B', icon: 'alert-circle-outline' as const, label: 'Moderate' },
+    { level: 'High' as const, color: '#EF4444', icon: 'warning-outline' as const, label: 'High' },
+  ], [])
+
   return (
     <KeyboardAvoidingView 
       className="flex-1" 
@@ -639,41 +693,13 @@ const CreateReport = () => {
               <ScaledText baseSize={14} className="mb-1 text-gray-600">Urgency Level</ScaledText>
               <View className="mb-4">
                 <View className="flex-row flex-wrap gap-2 mb-2">
-                  {[
-                    { level: 'Low' as const, color: '#10B981', icon: 'checkmark-circle-outline' as const, label: 'Low' },
-                    { level: 'Moderate' as const, color: '#F59E0B', icon: 'alert-circle-outline' as const, label: 'Moderate' },
-                    { level: 'High' as const, color: '#EF4444', icon: 'warning-outline' as const, label: 'High' },
-                  ].map(opt => (
-                    <TouchableOpacity
-                      key={opt.level}
+                  {urgencyOptions.map(opt => (
+                    <UrgencyButton 
+                      key={opt.level} 
+                      opt={opt} 
+                      isSelected={urgency === opt.level}
                       onPress={() => setUrgency(opt.level)}
-                      activeOpacity={0.8}
-                      className={`flex-1 min-w-[48%] rounded-xl border p-3 ${urgency === opt.level ? 'shadow-lg' : 'bg-white border-gray-300'}`}
-                      style={urgency === opt.level ? {
-                        backgroundColor: opt.color,
-                        borderColor: opt.color,
-                        shadowColor: opt.color,
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.3,
-                        shadowRadius: 5,
-                        elevation: 8,
-                      } : {}}
-                    >
-                      <View className="flex-row items-center mb-1">
-                        <Ionicons
-                          name={opt.icon}
-                          size={20}
-                          color={urgency === opt.level ? 'white' : opt.color}
-                          style={{ marginRight: 8 }}
-                        />
-                        <ScaledText
-                          baseSize={18}
-                          className={urgency === opt.level ? 'font-semibold text-white' : 'font-semibold text-gray-900'}
-                        >
-                          {opt.label}
-                        </ScaledText>
-                      </View>
-                    </TouchableOpacity>
+                    />
                   ))}
                 </View>
               </View>
