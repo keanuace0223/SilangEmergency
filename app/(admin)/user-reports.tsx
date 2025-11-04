@@ -71,25 +71,50 @@ export default function AdminUserReportsScreen() {
     return colorMap[urgency] || '#6B7280';
   };
 
+  // Helper function to get AVPU display info
+  const getPatientStatusInfo = (status: string) => {
+    switch (status) {
+      case 'Alert':
+        return { icon: 'eye-outline', text: 'ALERT', color: '#10B981' };
+      case 'Voice':
+        return { icon: 'volume-medium-outline', text: 'VOICE', color: '#F59E0B' };
+      case 'Pain':
+        return { icon: 'alert-circle-outline', text: 'PAIN', color: '#EF4444' };
+      case 'Unresponsive':
+        return { icon: 'eye-off-outline', text: 'UNRESPONSIVE', color: '#EF4444' };
+      default:
+        // Fallback for old 'High'/'Moderate'/'Low' data
+        if (status === 'High') return { icon: 'alert-circle-outline', text: 'HIGH', color: '#EF4444' };
+        if (status === 'Moderate') return { icon: 'volume-medium-outline', text: 'MODERATE', color: '#F59E0B' };
+        if (status === 'Low') return { icon: 'eye-outline', text: 'LOW', color: '#10B981' };
+        return { icon: 'help-circle-outline', text: (status || 'N/A').toUpperCase(), color: '#6B7280' };
+    }
+  };
+
   const formatShortId = (id: any) => {
     if (id == null) return '';
     const s = String(id);
     if (s.includes('-')) return s.replace(/-/g, '').slice(0, 4).toUpperCase();
     return s.slice(0, 4).toUpperCase();
   };
-  const renderReportItem = ({ item }: { item: any }) => (
-    <TouchableOpacity activeOpacity={0.9} className="bg-white rounded-2xl border border-gray-100 p-4 mb-3" onPress={() => { setSelectedReport(item); setShowDetail(true); }} style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 10 }}>
-      <View className="flex-row">
-        <View className="w-12 h-12 rounded-xl bg-white items-center justify-center mr-4 shadow-sm">
-          <Ionicons name={getIncidentIcon(item.incident_type)} size={24} color={getIncidentColor(item.incident_type)} />
-        </View>
-        <View className="flex-1">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-base font-bold text-gray-900" numberOfLines={1}>{item.incident_type}</Text>
-            <View className="px-2 py-1 rounded-full" style={{ backgroundColor: getUrgencyColor(item.urgency_tag) + 'E6' }}>
-              <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>{String(item.urgency_tag || '').toUpperCase()}</Text>
-            </View>
+  const renderReportItem = ({ item }: { item: any }) => {
+    const statusInfo = getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low');
+    return (
+      <TouchableOpacity activeOpacity={0.9} className="bg-white rounded-2xl border border-gray-100 p-4 mb-3" onPress={() => { setSelectedReport(item); setShowDetail(true); }} style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 10 }}>
+        <View className="flex-row">
+          <View className="w-12 h-12 rounded-xl bg-white items-center justify-center mr-4 shadow-sm">
+            <Ionicons name={getIncidentIcon(item.incident_type)} size={24} color={getIncidentColor(item.incident_type)} />
           </View>
+          <View className="flex-1">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-base font-bold text-gray-900" numberOfLines={1}>{item.incident_type}</Text>
+              <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
+                <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
+                <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
+                  {statusInfo.text}
+                </Text>
+              </View>
+            </View>
           {item.description ? (
             <Text className="text-gray-600 text-xs mt-1" numberOfLines={2}>{item.description}</Text>
           ) : null}
@@ -107,7 +132,8 @@ export default function AdminUserReportsScreen() {
         <Text className="text-gray-400 text-xs">#{formatShortId(item.id)}</Text>
       </View>
     </TouchableOpacity>
-  );
+    );
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top','bottom']}>

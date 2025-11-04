@@ -27,7 +27,7 @@ const Reports = () => {
   const s = (px: number) => Math.round(px * spacingScale)
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets()
-  const { user, refreshKey } = useUser()
+  const { user } = useUser()
   const { isOnline, manualSync, retryFailedReports, isSyncing } = useSync()
   const [showAdd, setShowAdd] = React.useState(false)
   const [showDetail, setShowDetail] = React.useState(false)
@@ -110,6 +110,26 @@ const Reports = () => {
     return colorMap[urgency] || '#6B7280'
   }
 
+  // Helper function to get AVPU display info
+  const getPatientStatusInfo = (status: string) => {
+    switch (status) {
+      case 'Alert':
+        return { icon: 'eye-outline', text: 'ALERT', color: '#10B981' };
+      case 'Voice':
+        return { icon: 'volume-medium-outline', text: 'VOICE', color: '#F59E0B' };
+      case 'Pain':
+        return { icon: 'alert-circle-outline', text: 'PAIN', color: '#EF4444' };
+      case 'Unresponsive':
+        return { icon: 'eye-off-outline', text: 'UNRESPONSIVE', color: '#EF4444' };
+      default:
+        // Fallback for old 'High'/'Moderate'/'Low' data
+        if (status === 'High') return { icon: 'alert-circle-outline', text: 'HIGH', color: '#EF4444' };
+        if (status === 'Moderate') return { icon: 'volume-medium-outline', text: 'MODERATE', color: '#F59E0B' };
+        if (status === 'Low') return { icon: 'eye-outline', text: 'LOW', color: '#10B981' };
+        return { icon: 'help-circle-outline', text: (status || 'N/A').toUpperCase(), color: '#6B7280' };
+    }
+  };
+
   // Format a compact, user-friendly ID from UUID/number
   const formatShortId = (id: any) => {
     if (id == null) return ''
@@ -174,7 +194,7 @@ const Reports = () => {
   // Load reports on component mount
   React.useEffect(() => {
     if (user?.id) { fetchReports() }
-  }, [fetchReports, user?.id, refreshKey])
+  }, [fetchReports, user?.id])
 
   // Auto-refresh when screen comes into focus
   useFocusEffect(
@@ -182,7 +202,7 @@ const Reports = () => {
       if (user?.id) {
         fetchReports()
       }
-    }, [fetchReports, user?.id, refreshKey])
+    }, [fetchReports, user?.id])
   )
 
   // Open Add modal when navigated with ?openAdd=1
@@ -606,6 +626,7 @@ const Reports = () => {
   // Render report item
   const renderReportItem = ({ item }: { item: any }) => {
     const syncInfo = getSyncStatusInfo(item)
+    const statusInfo = getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low');
     
     return (
       <TouchableOpacity onPress={() => handleReportPress(item)} activeOpacity={0.8} className="mx-6">
@@ -631,9 +652,10 @@ const Reports = () => {
                   </View>
                 </View>
               </View>
-              <View className="px-3 py-1.5 rounded-full shadow-sm" style={{ backgroundColor: getUrgencyColor(item.urgency_level || item.urgency_tag || 'Low'), shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
+              <View className="px-2.5 py-1.5 rounded-full shadow-sm flex-row items-center" style={{ backgroundColor: statusInfo.color, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
+                <Ionicons name={statusInfo.icon as any} size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
                 <Caption className="font-bold tracking-wide" style={{ color: '#FFFFFF' }}>
-                  {item.patient_status ? String(item.patient_status).toUpperCase() : String(item.urgency_tag || 'Low').toUpperCase()}
+                  {statusInfo.text}
                 </Caption>
               </View>
             </View>
@@ -971,35 +993,53 @@ const Reports = () => {
               <View className="mb-4">
                 <View className="flex-row flex-wrap gap-2 mb-2">
                   {([
-                    { status: 'Alert', label: 'Alert', color: '#10B981', desc: 'Fully conscious', tagalog: 'Gising at alisto' },
-                    { status: 'Voice', label: 'Voice', color: '#3B82F6', desc: 'Responds to voice', tagalog: 'Tumugon sa tinig' },
-                    { status: 'Pain', label: 'Pain', color: '#F59E0B', desc: 'Responds to pain', tagalog: 'Tumugon sa sakit' },
-                    { status: 'Unresponsive', label: 'Unresponsive', color: '#EF4444', desc: 'No response', tagalog: 'Walang tugon' },
-                  ] as const).map(opt => (
-                    <TouchableOpacity
-                      key={opt.status}
-                      onPress={() => setPatientStatus(opt.status)}
-                      activeOpacity={0.7}
-                      className={`flex-1 min-w-[45%] rounded-xl border-2 p-4 ${
-                        patientStatus === opt.status ? 'border-gray-800' : 'border-gray-200'
-                      }`}
-                      style={{
-                        backgroundColor: patientStatus === opt.status ? opt.color + '20' : '#FFFFFF',
-                      }}
-                    >
-                      <View className="flex-row items-center mb-2">
-                        <View 
-                          className="w-4 h-4 rounded-full mr-2"
-                          style={{ backgroundColor: opt.color }}
-                        />
-                        <ScaledText baseSize={16} className={`font-bold ${patientStatus === opt.status ? 'text-gray-900' : 'text-gray-700'}`}>
-                          {opt.label}
+                    { status: 'Alert', label: 'Alert', color: '#10B981', bgColor: '#10B981', borderColor: '#10B981', desc: 'Fully conscious', tagalog: 'Gising at alisto', icon: 'eye-outline' },
+                    { status: 'Voice', label: 'Voice', color: '#F59E0B', bgColor: '#F59E0B', borderColor: '#F59E0B', desc: 'Responds to voice', tagalog: 'Tumugon sa tinig', icon: 'volume-medium-outline' },
+                    { status: 'Pain', label: 'Pain', color: '#EF4444', bgColor: '#EF4444', borderColor: '#EF4444', desc: 'Responds to pain', tagalog: 'Tumugon sa sakit', icon: 'alert-circle-outline' },
+                    { status: 'Unresponsive', label: 'Unresponsive', color: '#6B7280', bgColor: '#6B7280', borderColor: '#6B7280', desc: 'No response', tagalog: 'Walang tugon', icon: 'eye-off-outline' },
+                  ] as const).map(opt => {
+                    const isSelected = patientStatus === opt.status;
+                    return (
+                      <TouchableOpacity
+                        key={opt.status}
+                        onPress={() => setPatientStatus(opt.status)}
+                        activeOpacity={0.8}
+                        className={`flex-1 min-w-[48%] rounded-xl border p-3 ${
+                          isSelected ? 'shadow-lg' : 'bg-white border-gray-300'
+                        }`}
+                        style={isSelected ? {
+                          backgroundColor: opt.bgColor,
+                          borderColor: opt.borderColor,
+                          shadowColor: opt.color,
+                          shadowOffset: { width: 0, height: 4 },
+                          shadowOpacity: 0.3,
+                          shadowRadius: 5,
+                          elevation: 8,
+                        } : {}}
+                      >
+                        <View className="flex-row items-center mb-1">
+                          <Ionicons
+                            name={opt.icon as any}
+                            size={20}
+                            color={isSelected ? 'white' : opt.color}
+                            style={{ marginRight: 8 }}
+                          />
+                          <ScaledText
+                            baseSize={18}
+                            className={`font-semibold ${isSelected ? 'text-white' : 'text-gray-900'}`}
+                          >
+                            {opt.label}
+                          </ScaledText>
+                        </View>
+                        <ScaledText
+                          baseSize={12}
+                          className={`${isSelected ? 'text-white' : 'text-gray-600'}`}
+                        >
+                          {opt.tagalog}
                         </ScaledText>
-                      </View>
-                      <ScaledText baseSize={12} className="text-gray-600 mb-1">{opt.desc}</ScaledText>
-                      <ScaledText baseSize={11} className="text-gray-500 italic">{opt.tagalog}</ScaledText>
-                    </TouchableOpacity>
-                  ))}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
 

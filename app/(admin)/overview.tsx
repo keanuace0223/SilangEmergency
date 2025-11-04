@@ -58,7 +58,29 @@ export default function AdminOverviewScreen() {
   const incidentEntries = useMemo(() => Object.entries(countsByIncident), [countsByIncident]);
   const urgencyEntries = useMemo(() => Object.entries(countsByUrgency), [countsByUrgency]);
 
-  const renderRecent = ({ item }: { item: any }) => (
+  // Helper function to get AVPU display info
+  const getPatientStatusInfo = (status: string) => {
+    switch (status) {
+      case 'Alert':
+        return { icon: 'eye-outline', text: 'ALERT', color: '#10B981' };
+      case 'Voice':
+        return { icon: 'volume-medium-outline', text: 'VOICE', color: '#F59E0B' };
+      case 'Pain':
+        return { icon: 'alert-circle-outline', text: 'PAIN', color: '#EF4444' };
+      case 'Unresponsive':
+        return { icon: 'eye-off-outline', text: 'UNRESPONSIVE', color: '#EF4444' };
+      default:
+        // Fallback for old 'High'/'Moderate'/'Low' data
+        if (status === 'High') return { icon: 'alert-circle-outline', text: 'HIGH', color: '#EF4444' };
+        if (status === 'Moderate') return { icon: 'volume-medium-outline', text: 'MODERATE', color: '#F59E0B' };
+        if (status === 'Low') return { icon: 'eye-outline', text: 'LOW', color: '#10B981' };
+        return { icon: 'help-circle-outline', text: (status || 'N/A').toUpperCase(), color: '#6B7280' };
+    }
+  };
+
+  const renderRecent = ({ item }: { item: any }) => {
+    const statusInfo = getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low');
+    return (
     <View className="bg-white rounded-2xl border border-gray-100 p-4 mb-3" style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 10 }}>
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center">
@@ -70,13 +92,17 @@ export default function AdminOverviewScreen() {
             <Text className="text-xs text-gray-500">{new Date(item.incident_datetime || item.created_at).toLocaleString()}</Text>
           </View>
         </View>
-        <View className="px-2 py-1 rounded-full" style={{ backgroundColor: '#E8F1FD' }}>
-          <Text className="text-[10px] font-bold" style={{ color: '#4A90E2' }}>{String(item.urgency_tag || '').toUpperCase() || '—'}</Text>
+        <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
+          <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
+          <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
+            {statusInfo.text}
+          </Text>
         </View>
       </View>
       {item.description ? <Text className="text-gray-600 text-sm mt-2" numberOfLines={2}>{item.description}</Text> : null}
     </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top','bottom']}>
