@@ -179,6 +179,39 @@ const Reports = () => {
     }, [fetchReports, user?.id])
   )
 
+  // Real-time updates via Supabase Realtime
+  React.useEffect(() => {
+    if (!user?.id || !isOnline) return
+
+    // Dynamic import to avoid circular dependencies
+    import('../../src/lib/supabase').then(({ supabase }) => {
+    
+      // Subscribe to INSERT and UPDATE events on reports table for this user
+      const channel = supabase
+        .channel('reports-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*', // Listen to INSERT, UPDATE, DELETE
+            schema: 'public',
+            table: 'reports',
+            filter: `user_id=eq.${user.id}`, // Filter for this user's reports
+          },
+          (payload: any) => {
+            // Refresh reports when any change occurs
+            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+              fetchReports()
+            }
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
+    })
+  }, [user?.id, isOnline, fetchReports])
+
   // Open Add modal when navigated with ?openAdd=1
   React.useEffect(() => {
     if (params?.openAdd && String(params.openAdd) !== '0') {

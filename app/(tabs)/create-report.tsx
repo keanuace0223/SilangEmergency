@@ -20,12 +20,14 @@ const CreateReport = () => {
   const { user } = useUser()
   const { isOnline } = useSync()
 
-  const [incidentType, setIncidentType] = React.useState<'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical' | ''>('')
+  const [incidentType, setIncidentType] = React.useState<'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical' | 'Others' | ''>('')
   const [showIncidentMenu, setShowIncidentMenu] = React.useState(false)
   const [showLocationPicker, setShowLocationPicker] = React.useState(false)
   const [selectedLocation, setSelectedLocation] = React.useState<{ latitude: number; longitude: number; address?: string } | null>(null)
   const [location, setLocation] = React.useState('')
   const [patientStatus, setPatientStatus] = React.useState<'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | ''>('')
+  const [urgency, setUrgency] = React.useState<'Low' | 'Moderate' | 'High' | ''>('')
+  const [othersSpecification, setOthersSpecification] = React.useState('')
   const [limitStatus, setLimitStatus] = React.useState<{
     count: number;
     remaining: number;
@@ -81,10 +83,12 @@ const CreateReport = () => {
     setShowIncidentMenu(false)
     setLocation('')
     setPatientStatus('')
+    setUrgency('')
     setDescription('')
     setMedia([])
     setIsSubmitting(false)
     setSelectedLocation(null)
+    setOthersSpecification('')
   }
 
   const handleClose = () => {
@@ -94,8 +98,22 @@ const CreateReport = () => {
 
   const handleSave = () => {
     // Validate first
-    if (!incidentType || !location || !patientStatus || !description) {
+    if (!incidentType || !location || !description) {
       showModal('Validation error', 'Please fill in all required fields', 'warning', '#EF4444')
+      return
+    }
+    // Validate urgency/patient status based on incident type
+    if (incidentType === 'Vehicular Accident' && !patientStatus) {
+      showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
+      return
+    }
+    if (incidentType !== 'Vehicular Accident' && !urgency) {
+      showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
+      return
+    }
+    // Validate Others specification if Others is selected
+    if (incidentType === 'Others' && !othersSpecification.trim()) {
+      showModal('Validation error', 'Please specify the incident type', 'warning', '#EF4444')
       return
     }
     // Show confirmation modal
@@ -104,8 +122,22 @@ const CreateReport = () => {
 
   const handleSaveDraft = () => {
     // Validate first
-    if (!incidentType || !location || !patientStatus || !description) {
+    if (!incidentType || !location || !description) {
       showModal('Validation error', 'Please fill in all required fields', 'warning', '#EF4444')
+      return
+    }
+    // Validate urgency/patient status based on incident type
+    if (incidentType === 'Vehicular Accident' && !patientStatus) {
+      showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
+      return
+    }
+    if (incidentType !== 'Vehicular Accident' && !urgency) {
+      showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
+      return
+    }
+    // Validate Others specification if Others is selected
+    if (incidentType === 'Others' && !othersSpecification.trim()) {
+      showModal('Validation error', 'Please specify the incident type', 'warning', '#EF4444')
       return
     }
     // Show draft confirmation modal
@@ -136,17 +168,30 @@ const CreateReport = () => {
         return;
       }
 
-      // Map patientStatus to urgency for backward compatibility
-      const urgencyLevel: 'Low' | 'Moderate' | 'High' = 
-        patientStatus === 'Alert' ? 'Low' :
-        patientStatus === 'Voice' ? 'Moderate' :
-        patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low';
+      // Determine urgency level based on incident type
+      let urgencyLevel: 'Low' | 'Moderate' | 'High' = 'Low'
+      let finalPatientStatus: string | null = null
+      
+      if (incidentType === 'Vehicular Accident') {
+        // For Vehicular Accident, use AVPU patient status
+        finalPatientStatus = patientStatus
+        // Map AVPU to urgency level
+        urgencyLevel = 
+          patientStatus === 'Alert' ? 'Low' :
+          patientStatus === 'Voice' ? 'Moderate' :
+          patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
+      } else {
+        // For other incident types, use urgency level directly
+        urgencyLevel = urgency as 'Low' | 'Moderate' | 'High'
+        // Store urgency as patient_status for backward compatibility
+        finalPatientStatus = urgency
+      }
 
       const reportData = {
         user_id: user.id,
-        incident_type: incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical',
+        incident_type: incidentType === 'Others' ? othersSpecification : (incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical'),
         location: selectedLocation ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}` : location,
-        patient_status: patientStatus as 'Alert' | 'Voice' | 'Pain' | 'Unresponsive',
+        patient_status: finalPatientStatus as any,
         urgency_level: urgencyLevel,
         urgency_tag: urgencyLevel,
         description,
@@ -178,6 +223,7 @@ const CreateReport = () => {
             incidentType: reportData.incident_type,
             location: reportData.location,
             patientStatus: reportData.patient_status,
+            urgencyLevel: reportData.urgency_level,
             description: reportData.description,
             mediaUrls
           }
@@ -269,17 +315,30 @@ const CreateReport = () => {
         return
       }
 
-      // Map patientStatus to urgency for backward compatibility
-      const urgencyLevel: 'Low' | 'Moderate' | 'High' = 
-        patientStatus === 'Alert' ? 'Low' :
-        patientStatus === 'Voice' ? 'Moderate' :
-        patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low';
+      // Determine urgency level based on incident type
+      let urgencyLevel: 'Low' | 'Moderate' | 'High' = 'Low'
+      let finalPatientStatus: string | null = null
+      
+      if (incidentType === 'Vehicular Accident') {
+        // For Vehicular Accident, use AVPU patient status
+        finalPatientStatus = patientStatus
+        // Map AVPU to urgency level
+        urgencyLevel = 
+          patientStatus === 'Alert' ? 'Low' :
+          patientStatus === 'Voice' ? 'Moderate' :
+          patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
+      } else {
+        // For other incident types, use urgency level directly
+        urgencyLevel = urgency as 'Low' | 'Moderate' | 'High'
+        // Store urgency as patient_status for backward compatibility
+        finalPatientStatus = urgency
+      }
 
       const reportData = {
         user_id: user.id,
-        incident_type: incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical',
+        incident_type: incidentType === 'Others' ? othersSpecification : (incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical'),
         location: selectedLocation ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}` : location,
-        patient_status: patientStatus as 'Alert' | 'Voice' | 'Pain' | 'Unresponsive',
+        patient_status: finalPatientStatus as any,
         urgency_level: urgencyLevel,
         urgency_tag: urgencyLevel,
         description,
@@ -440,17 +499,27 @@ const CreateReport = () => {
   const AVPUButton = React.memo(AVPUButtonComponent)
 
   return (
-    <KeyboardAvoidingView className="flex-1" behavior={Platform.select({ ios: 'padding', android: undefined })}>
-      <View className={`flex-1 bg-white p-4`}>
-        <View className="flex-row items-center justify-between pt-6 mb-4">
-          <TouchableOpacity onPress={handleClose} className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center">
-            <Ionicons name="close" size={24} color="#6B7280" />
-          </TouchableOpacity>
-          <ScaledText baseSize={24} className="font-bold text-black">New Report</ScaledText>
-          <View className="w-10 h-10" />
+    <KeyboardAvoidingView 
+      className="flex-1" 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      <View className={`flex-1 bg-white`}>
+        <View className="px-4 pt-6 pb-4">
+          <View className="flex-row items-center justify-between">
+            <TouchableOpacity onPress={handleClose} className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center">
+              <Ionicons name="close" size={24} color="#6B7280" />
+            </TouchableOpacity>
+            <ScaledText baseSize={24} className="font-bold text-black">New Report</ScaledText>
+            <View className="w-10 h-10" />
+          </View>
         </View>
-        <View className="pt-6" />
-        <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 80 + Math.max(insets.bottom, 16) }} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          className="flex-1" 
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 + Math.max(insets.bottom, 16) }} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           <ScaledText baseSize={14} className="mb-1 text-gray-600">Incident type</ScaledText>
           <View className="relative mb-4">
             <TouchableOpacity onPress={() => setShowIncidentMenu(v => !v)} className={`border rounded-xl px-4 py-4 border-gray-300 bg-white`}>
@@ -463,7 +532,8 @@ const CreateReport = () => {
                         incidentType === 'Vehicular Accident' ? 'car' :
                         incidentType === 'Flood' ? 'water' :
                         incidentType === 'Earthquake' ? 'earth' :
-                        incidentType === 'Electrical' ? 'flash' : 'help'
+                        incidentType === 'Electrical' ? 'flash' :
+                        incidentType === 'Others' ? 'help-circle-outline' : 'help'
                       } 
                       size={20} 
                       color={
@@ -471,7 +541,8 @@ const CreateReport = () => {
                         incidentType === 'Vehicular Accident' ? '#FF4444' :
                         incidentType === 'Flood' ? '#4A90E2' :
                         incidentType === 'Earthquake' ? '#8B4513' :
-                        incidentType === 'Electrical' ? '#FFD700' : '#666'
+                        incidentType === 'Electrical' ? '#FFD700' :
+                        incidentType === 'Others' ? '#6B7280' : '#666'
                       } 
                     />
                   )}
@@ -489,9 +560,17 @@ const CreateReport = () => {
                   { type: 'Vehicular Accident', icon: 'car' as const, color: '#FF4444' },
                   { type: 'Flood', icon: 'water' as const, color: '#4A90E2' },
                   { type: 'Earthquake', icon: 'earth' as const, color: '#8B4513' },
-                  { type: 'Electrical', icon: 'flash' as const, color: '#FFD700' }
+                  { type: 'Electrical', icon: 'flash' as const, color: '#FFD700' },
+                  { type: 'Others', icon: 'help-circle-outline' as const, color: '#6B7280' }
                 ].map(opt => (
-                  <TouchableOpacity key={opt.type} className={`px-4 py-4 flex-row items-center active:bg-gray-50`} onPress={() => { setIncidentType(opt.type as any); setShowIncidentMenu(false) }}>
+                  <TouchableOpacity key={opt.type} className={`px-4 py-4 flex-row items-center active:bg-gray-50`} onPress={() => { 
+                    setIncidentType(opt.type as any); 
+                    setShowIncidentMenu(false);
+                    // Reset urgency/patient status when changing incident type
+                    setPatientStatus('')
+                    setUrgency('')
+                    setOthersSpecification('')
+                  }}>
                     <Ionicons name={opt.icon} size={20} color={opt.color} />
                     <ScaledText baseSize={16} className="ml-3 text-black">{opt.type}</ScaledText>
                   </TouchableOpacity>
@@ -538,19 +617,82 @@ const CreateReport = () => {
             </View>
           )}
 
-          <ScaledText baseSize={14} className="mb-1 text-gray-600">Patient Status (AVPU)</ScaledText>
-          <View className="mb-4">
-            <View className="flex-row flex-wrap gap-2 mb-2">
-              {avpuOptions.map(opt => (
-                <AVPUButton 
-                  key={opt.status} 
-                  opt={opt} 
-                  isSelected={patientStatus === opt.status}
-                  onPress={() => setPatientStatus(opt.status)}
-                />
-              ))}
-            </View>
-          </View>
+          {/* Conditional Urgency/Patient Status based on incident type */}
+          {incidentType === 'Vehicular Accident' ? (
+            <>
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Patient Status (AVPU)</ScaledText>
+              <View className="mb-4">
+                <View className="flex-row flex-wrap gap-2 mb-2">
+                  {avpuOptions.map(opt => (
+                    <AVPUButton 
+                      key={opt.status} 
+                      opt={opt} 
+                      isSelected={patientStatus === opt.status}
+                      onPress={() => setPatientStatus(opt.status)}
+                    />
+                  ))}
+                </View>
+              </View>
+            </>
+          ) : incidentType !== '' ? (
+            <>
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Urgency Level</ScaledText>
+              <View className="mb-4">
+                <View className="flex-row flex-wrap gap-2 mb-2">
+                  {[
+                    { level: 'Low' as const, color: '#10B981', icon: 'checkmark-circle-outline' as const, label: 'Low' },
+                    { level: 'Moderate' as const, color: '#F59E0B', icon: 'alert-circle-outline' as const, label: 'Moderate' },
+                    { level: 'High' as const, color: '#EF4444', icon: 'warning-outline' as const, label: 'High' },
+                  ].map(opt => (
+                    <TouchableOpacity
+                      key={opt.level}
+                      onPress={() => setUrgency(opt.level)}
+                      activeOpacity={0.8}
+                      className={`flex-1 min-w-[48%] rounded-xl border p-3 ${urgency === opt.level ? 'shadow-lg' : 'bg-white border-gray-300'}`}
+                      style={urgency === opt.level ? {
+                        backgroundColor: opt.color,
+                        borderColor: opt.color,
+                        shadowColor: opt.color,
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 5,
+                        elevation: 8,
+                      } : {}}
+                    >
+                      <View className="flex-row items-center mb-1">
+                        <Ionicons
+                          name={opt.icon}
+                          size={20}
+                          color={urgency === opt.level ? 'white' : opt.color}
+                          style={{ marginRight: 8 }}
+                        />
+                        <ScaledText
+                          baseSize={18}
+                          className={urgency === opt.level ? 'font-semibold text-white' : 'font-semibold text-gray-900'}
+                        >
+                          {opt.label}
+                        </ScaledText>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </>
+          ) : null}
+
+          {/* Others specification field */}
+          {incidentType === 'Others' && (
+            <>
+              <ScaledText baseSize={14} className="mb-1 text-gray-600">Please specify incident type</ScaledText>
+              <TextInput 
+                placeholder="Enter incident type..." 
+                value={othersSpecification} 
+                onChangeText={setOthersSpecification} 
+                className={`border rounded-xl px-4 py-4 text-base border-gray-300 bg-white text-black mb-4`} 
+                placeholderTextColor="#8E8E93"
+              />
+            </>
+          )}
 
           <ScaledText baseSize={14} className="mb-1 text-gray-600">Uploaded Media</ScaledText>
           <View className="mb-2">
@@ -601,10 +743,19 @@ const CreateReport = () => {
           </View>
 
           <ScaledText baseSize={14} className="mb-1 text-gray-600">Description</ScaledText>
-          <TextInput placeholder="Describe the incident..." value={description} onChangeText={setDescription} className={`border rounded-xl px-4 py-4 text-lg h-48 border-gray-300 bg-white text-black`} placeholderTextColor="#8E8E93" multiline textAlignVertical="top" />
+          <TextInput 
+            placeholder="Describe the incident..." 
+            value={description} 
+            onChangeText={setDescription} 
+            className={`border rounded-xl px-4 py-4 text-lg h-48 border-gray-300 bg-white text-black`} 
+            placeholderTextColor="#8E8E93" 
+            multiline 
+            textAlignVertical="top"
+            style={{ minHeight: 120 }}
+          />
         </ScrollView>
 
-        <View className="absolute bottom-0 left-0 right-0 p-4" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
+        <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
           <View className="flex-row gap-3">
             <TouchableOpacity onPress={handleClose} className={`flex-1 h-12 rounded-xl items-center justify-center bg-gray-200`}>
               <ScaledText baseSize={16} className="font-semibold text-gray-800">Cancel</ScaledText>

@@ -93,9 +93,11 @@ class SessionManager {
 
       // If not forcing single session, check for existing sessions first
       // The SQL function always creates a session, so we need to prevent that if not forcing
+      // This is a redundant check - the caller should already check, but this is a safety net
       if (!forceSingleSession) {
         const checkResult = await this.checkActiveSessions(userId);
         if (checkResult.sessionCount > 0) {
+          // CRITICAL: Do not create session if active sessions exist
           return {
             success: false,
             sessionToken: sessionTokenValue,

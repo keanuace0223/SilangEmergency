@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Location from 'expo-location'
 import React, { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Dimensions, Modal, Text, TouchableOpacity, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 import AppModal from './AppModal'
 
@@ -13,6 +14,7 @@ interface LocationPickerProps {
 }
 
 const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLocationSelect, initialLocation }) => {
+  const insets = useSafeAreaInsets()
   const { width } = Dimensions.get('window')
   const isSmallScreen = width < 375
   const isTablet = width > 768
@@ -164,14 +166,16 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
       <View className="flex-1 bg-white">
+        {/* Simple header with title and close button */}
         <View 
           className="bg-white border-b border-gray-200 shadow-sm" 
           style={{ 
+            paddingTop: insets.top,
             paddingHorizontal: spacing,
-            paddingVertical: 18,
+            paddingBottom: 18,
           }}
         >
-          <View className="flex-row items-center">
+          <View className="flex-row items-center justify-between">
             <TouchableOpacity 
               onPress={onClose} 
               className="bg-gray-100 items-center justify-center flex-shrink-0"
@@ -192,48 +196,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
               >
                 Select Location
               </Text>
-              {!isSmallScreen && (
-                <Text 
-                  className="text-gray-500 text-xs mt-0.5"
-                  numberOfLines={1}
-                >
-                  Tap on the map to choose a location
-                </Text>
-              )}
             </View>
             
-            <TouchableOpacity 
-              onPress={handleConfirm} 
-              disabled={isLoading || !selectedLocation}
-              className="items-center justify-center flex-shrink-0 shadow-md"
-              style={{
-                minWidth: isSmallScreen ? 70 : 80,
-                paddingHorizontal: isSmallScreen ? 12 : 16,
-                paddingVertical: isSmallScreen ? 8 : 10,
-                borderRadius: isSmallScreen ? 16 : 20,
-                backgroundColor: selectedLocation && !isLoading ? '#2563EB' : '#D1D5DB',
-                shadowColor: selectedLocation ? '#2563EB' : '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: selectedLocation ? 0.3 : 0.1,
-                shadowRadius: 4,
-                elevation: selectedLocation ? 6 : 2
-              }}
-            >
-              {isLoading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text 
-                  className="font-bold"
-                  style={{ 
-                    color: selectedLocation ? '#FFFFFF' : '#9CA3AF',
-                    fontSize: isSmallScreen ? 13 : 15
-                  }}
-                  numberOfLines={1}
-                >
-                  Confirm
-                </Text>
-              )}
-            </TouchableOpacity>
+            <View style={{ width: isSmallScreen ? 36 : 40 }} />
           </View>
         </View>
 
@@ -334,14 +299,45 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
           </View>
         </View>
 
-        {/* Enhanced responsive footer with tips */}
+        {/* Footer with Confirm button and tips - absolutely positioned over map */}
         <View 
-          className="border-t border-blue-100 bg-blue-50"
+          className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200"
           style={{ 
+            paddingTop: 16,
             paddingHorizontal: spacing,
-            paddingVertical: 18,
+            paddingBottom: Math.max(insets.bottom, 16),
           }}
         >
+          {/* Confirm button */}
+          <TouchableOpacity 
+            onPress={handleConfirm} 
+            disabled={isLoading || !selectedLocation}
+            className="w-full items-center justify-center rounded-xl shadow-lg mb-3"
+            style={{
+              paddingVertical: isSmallScreen ? 14 : 16,
+              backgroundColor: selectedLocation && !isLoading ? '#2563EB' : '#D1D5DB',
+              shadowColor: selectedLocation ? '#2563EB' : '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: selectedLocation ? 0.3 : 0.1,
+              shadowRadius: 8,
+              elevation: selectedLocation ? 8 : 2
+            }}
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text 
+                className="font-bold text-lg"
+                style={{ 
+                  color: selectedLocation ? '#FFFFFF' : '#9CA3AF',
+                }}
+              >
+                Confirm Location
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Quick Tips */}
           <View className="flex-row items-start">
             <View 
               className="bg-blue-100 items-center justify-center mt-0.5"
@@ -380,17 +376,6 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
                 >
                   • Use the 📍 button to get your current position
                 </Text>
-                {!isSmallScreen && (
-                  <Text 
-                    className="text-blue-800"
-                    style={{ 
-                      fontSize: 11,
-                      lineHeight: 14
-                    }}
-                  >
-                    • Use +/- buttons to zoom in and out
-                  </Text>
-                )}
               </View>
             </View>
           </View>

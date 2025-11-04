@@ -34,6 +34,34 @@ export default function AdminUserReportsScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Real-time updates via Supabase Realtime for admin
+  useEffect(() => {
+    // Dynamic import to avoid circular dependencies
+    import('../../src/lib/supabase').then(({ supabase }) => {
+    
+      // Subscribe to INSERT events on reports table (all reports for admin)
+      const channel = supabase
+        .channel('admin-user-reports-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT', // Listen to new reports
+            schema: 'public',
+            table: 'reports',
+          },
+          (payload: any) => {
+            // Refresh report list when new report is inserted
+            load()
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
+    })
+  }, [load])
+
   const onRefresh = async () => {
     setRefreshing(true);
     await load();

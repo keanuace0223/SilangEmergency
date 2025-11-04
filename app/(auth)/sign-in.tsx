@@ -3,14 +3,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-  Animated,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  View
+    Animated,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppModal from '../../components/AppModal';
@@ -118,7 +118,6 @@ export default function SignInScreen() {
     }
     
     // Verify session is loaded
-    let sessionReady = false;
     for (let i = 0; i < 10; i++) {
       await new Promise(resolve => setTimeout(resolve, 200));
       
@@ -126,10 +125,9 @@ export default function SignInScreen() {
         const { data: sess } = await supabase.auth.getSession();
         
         if (sess?.session?.user?.id === authUserId && sess.session.access_token) {
-          sessionReady = true;
           break;
         }
-      } catch (err) {
+      } catch {
         // Continue retrying
       }
     }
@@ -182,10 +180,8 @@ export default function SignInScreen() {
           profile = data;
           break;
         }
-      } catch (err) {
-        if (__DEV__) {
-          console.error('Profile query exception:', err);
-        }
+      } catch {
+        // Continue to next attempt
       }
     }
 
@@ -209,6 +205,7 @@ export default function SignInScreen() {
     }
 
     // Check for existing sessions (strict single-session; no force login)
+    // MUST check before creating session - this is the critical enforcement point
     if (!forceSingleSession) {
       try {
         const sessionCheck = await sessionManager.checkActiveSessions(authUserId);
@@ -216,25 +213,52 @@ export default function SignInScreen() {
           setActiveSessions(sessionCheck.activeSessions);
           setMultiDeviceModalVisible(true);
           try { await supabase.auth.signOut(); } catch {}
-          return;
+          return; // CRITICAL: Return immediately - do NOT proceed to createSession
         }
       } catch (error) {
-        console.warn('Failed to check sessions, proceeding with login:', error);
+        console.warn('Failed to check sessions, blocking login for safety:', error);
+        // On error, block login to be safe
+        setMessageTitle('Session check failed');
+        setMessageText('Unable to verify session status. Please try again.');
+        setMessageIcon('warning');
+        setMessageIconColor('#EF4444');
+        setMessageVisible(true);
+        try { await supabase.auth.signOut(); } catch {}
+        return;
       }
     }
 
-    // Create session tracking
+    // Only create session if check passed (no active sessions found)
+    // createSession will also check internally, but this is the primary enforcement
     try {
       const created = await sessionManager.createSession(authUserId, false);
       if (!created.success && created.existingSessions > 0) {
+        // This should not happen if checkActiveSessions worked, but double-check
         setActiveSessions(await sessionManager.getUserSessions(authUserId));
         setMultiDeviceModalVisible(true);
+        try { await supabase.auth.signOut(); } catch {}
+        return;
+      }
+      if (!created.success) {
+        // Session creation failed for other reasons
+        setMessageTitle('Login failed');
+        setMessageText('Unable to create session. Please try again.');
+        setMessageIcon('warning');
+        setMessageIconColor('#EF4444');
+        setMessageVisible(true);
         try { await supabase.auth.signOut(); } catch {}
         return;
       }
       sessionManager.startHeartbeat();
     } catch (error) {
       console.warn('Failed to create session tracking:', error);
+      setMessageTitle('Login failed');
+      setMessageText('Unable to create session. Please try again.');
+      setMessageIcon('warning');
+      setMessageIconColor('#EF4444');
+      setMessageVisible(true);
+      try { await supabase.auth.signOut(); } catch {}
+      return;
     }
 
     // Save user data to storage and refresh context
@@ -268,12 +292,12 @@ export default function SignInScreen() {
       setTimeout(async () => {
         try {
           await refreshUser();
-        } catch (err) {
+        } catch {
           // Silent fail on delayed refresh
         }
       }, 1000);
-    } catch (err) {
-      console.warn('Failed to refresh user context:', err);
+    } catch {
+      // Silent fail on refresh error
     }
     
     setSuccessVisible(true);
