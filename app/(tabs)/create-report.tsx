@@ -382,6 +382,63 @@ const CreateReport = () => {
     setShowLocationPicker(false)
   }
 
+  // Memoize AVPU options to prevent re-creation on every render
+  const avpuOptions = React.useMemo(() => [
+    { status: 'Alert' as const, label: 'Alert', color: '#10B981', bgColor: '#10B981', borderColor: '#10B981', tagalog: 'Gising at alisto', icon: 'eye-outline' as const },
+    { status: 'Voice' as const, label: 'Voice', color: '#F59E0B', bgColor: '#F59E0B', borderColor: '#F59E0B', tagalog: 'Tumugon sa tinig', icon: 'volume-medium-outline' as const },
+    { status: 'Pain' as const, label: 'Pain', color: '#EF4444', bgColor: '#EF4444', borderColor: '#EF4444', tagalog: 'Tumugon sa sakit', icon: 'alert-circle-outline' as const },
+    { status: 'Unresponsive' as const, label: 'Unresponsive', color: '#6B7280', bgColor: '#6B7280', borderColor: '#6B7280', tagalog: 'Walang tugon', icon: 'eye-off-outline' as const },
+  ], [])
+
+  // Memoized AVPU button component to prevent NativeWind from processing during state updates
+  const AVPUButtonComponent = ({ opt, isSelected, onPress }: { opt: typeof avpuOptions[0], isSelected: boolean, onPress: () => void }) => {
+    const baseClassName = 'flex-1 min-w-[48%] rounded-xl border p-3'
+    const selectedClassName = 'shadow-lg'
+    const unselectedClassName = 'bg-white border-gray-300'
+    
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.8}
+        className={isSelected ? `${baseClassName} ${selectedClassName}` : `${baseClassName} ${unselectedClassName}`}
+        style={isSelected ? {
+          backgroundColor: opt.bgColor,
+          borderColor: opt.borderColor,
+          shadowColor: opt.color,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 5,
+          elevation: 8,
+        } : {}}
+      >
+        <View className="flex-row items-center mb-1">
+          <Ionicons
+            name={opt.icon}
+            size={20}
+            color={isSelected ? 'white' : opt.color}
+            style={{ marginRight: 8 }}
+          />
+          <ScaledText
+            baseSize={18}
+            className={isSelected ? 'font-semibold text-white' : 'font-semibold text-gray-900'}
+          >
+            {opt.label}
+          </ScaledText>
+        </View>
+        <ScaledText
+          baseSize={12}
+          className={isSelected ? 'text-white' : 'text-gray-600'}
+        >
+          {opt.tagalog}
+        </ScaledText>
+      </TouchableOpacity>
+    )
+  }
+  
+  AVPUButtonComponent.displayName = 'AVPUButton'
+  
+  const AVPUButton = React.memo(AVPUButtonComponent)
+
   return (
     <KeyboardAvoidingView className="flex-1" behavior={Platform.select({ ios: 'padding', android: undefined })}>
       <View className={`flex-1 bg-white p-4`}>
@@ -484,54 +541,14 @@ const CreateReport = () => {
           <ScaledText baseSize={14} className="mb-1 text-gray-600">Patient Status (AVPU)</ScaledText>
           <View className="mb-4">
             <View className="flex-row flex-wrap gap-2 mb-2">
-              {([
-                { status: 'Alert', label: 'Alert', color: '#10B981', bgColor: '#10B981', borderColor: '#10B981', desc: 'Fully conscious', tagalog: 'Gising at alisto', icon: 'eye-outline' },
-                { status: 'Voice', label: 'Voice', color: '#F59E0B', bgColor: '#F59E0B', borderColor: '#F59E0B', desc: 'Responds to voice', tagalog: 'Tumugon sa tinig', icon: 'volume-medium-outline' },
-                { status: 'Pain', label: 'Pain', color: '#EF4444', bgColor: '#EF4444', borderColor: '#EF4444', desc: 'Responds to pain', tagalog: 'Tumugon sa sakit', icon: 'alert-circle-outline' },
-                { status: 'Unresponsive', label: 'Unresponsive', color: '#6B7280', bgColor: '#6B7280', borderColor: '#6B7280', desc: 'No response', tagalog: 'Walang tugon', icon: 'eye-off-outline' },
-              ] as const).map(opt => {
-                const isSelected = patientStatus === opt.status;
-                return (
-                  <TouchableOpacity
-                    key={opt.status}
-                    onPress={() => setPatientStatus(opt.status)}
-                    activeOpacity={0.8}
-                    className={`flex-1 min-w-[48%] rounded-xl border p-3 ${
-                      isSelected ? 'shadow-lg' : 'bg-white border-gray-300'
-                    }`}
-                    style={isSelected ? {
-                      backgroundColor: opt.bgColor,
-                      borderColor: opt.borderColor,
-                      shadowColor: opt.color,
-                      shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: 0.3,
-                      shadowRadius: 5,
-                      elevation: 8,
-                    } : {}}
-                  >
-                    <View className="flex-row items-center mb-1">
-                      <Ionicons
-                        name={opt.icon as any}
-                        size={20}
-                        color={isSelected ? 'white' : opt.color}
-                        style={{ marginRight: 8 }}
-                      />
-                      <ScaledText
-                        baseSize={18}
-                        className={`font-semibold ${isSelected ? 'text-white' : 'text-gray-900'}`}
-                      >
-                        {opt.label}
-                      </ScaledText>
-                    </View>
-                    <ScaledText
-                      baseSize={12}
-                      className={`${isSelected ? 'text-white' : 'text-gray-600'}`}
-                    >
-                      {opt.tagalog}
-                    </ScaledText>
-                  </TouchableOpacity>
-                );
-              })}
+              {avpuOptions.map(opt => (
+                <AVPUButton 
+                  key={opt.status} 
+                  opt={opt} 
+                  isSelected={patientStatus === opt.status}
+                  onPress={() => setPatientStatus(opt.status)}
+                />
+              ))}
             </View>
           </View>
 
@@ -610,69 +627,77 @@ const CreateReport = () => {
         </View>
       </View>
 
-      <LocationPicker visible={showLocationPicker} onClose={() => setShowLocationPicker(false)} onLocationSelect={handleLocationSelect} initialLocation={selectedLocation || undefined} />
+      {showLocationPicker && (
+        <LocationPicker visible={true} onClose={() => setShowLocationPicker(false)} onLocationSelect={handleLocationSelect} initialLocation={selectedLocation || undefined} />
+      )}
       
       {/* Submit Confirmation Modal */}
-      <Modal visible={showConfirmSubmit} transparent={true} animationType="fade" onRequestClose={() => setShowConfirmSubmit(false)}>
-        <View className="flex-1 justify-center items-center bg-black/50">
-          <View className="bg-white rounded-2xl p-6 mx-6 max-w-sm w-full">
-            <View className="items-center">
-              <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#2563EB20' }}>
-                <Ionicons name="alert-circle" size={32} color="#2563EB" />
-              </View>
-              <ScaledText baseSize={20} className="font-bold text-gray-900 mb-2 text-center">Confirm Submission</ScaledText>
-              <ScaledText baseSize={14} className="text-gray-600 text-center mb-6 leading-6">Are you sure you want to submit this report? Please review all details before confirming.</ScaledText>
-              <View className="flex-row gap-3 w-full">
-                <TouchableOpacity
-                  onPress={() => setShowConfirmSubmit(false)}
-                  className="flex-1 py-3 rounded-xl items-center bg-gray-200"
-                >
-                  <ScaledText baseSize={16} className="text-gray-800 font-semibold">Cancel</ScaledText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={confirmSubmitReport}
-                  className="flex-1 py-3 rounded-xl items-center"
-                  style={{ backgroundColor: '#4A90E2' }}
-                >
-                  <ScaledText baseSize={16} className="text-white font-semibold">Confirm</ScaledText>
-                </TouchableOpacity>
+      {showConfirmSubmit && (
+        <Modal visible={true} transparent={true} animationType="fade" onRequestClose={() => setShowConfirmSubmit(false)}>
+          <View className="flex-1 justify-center items-center bg-black/50">
+            <View className="bg-white rounded-2xl p-6 mx-6 max-w-sm w-full">
+              <View className="items-center">
+                <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#2563EB20' }}>
+                  <Ionicons name="alert-circle" size={32} color="#2563EB" />
+                </View>
+                <ScaledText baseSize={20} className="font-bold text-gray-900 mb-2 text-center">Confirm Submission</ScaledText>
+                <ScaledText baseSize={14} className="text-gray-600 text-center mb-6 leading-6">Are you sure you want to submit this report? Please review all details before confirming.</ScaledText>
+                <View className="flex-row gap-3 w-full">
+                  <TouchableOpacity
+                    onPress={() => setShowConfirmSubmit(false)}
+                    className="flex-1 py-3 rounded-xl items-center bg-gray-200"
+                  >
+                    <ScaledText baseSize={16} className="text-gray-800 font-semibold">Cancel</ScaledText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={confirmSubmitReport}
+                    className="flex-1 py-3 rounded-xl items-center"
+                    style={{ backgroundColor: '#4A90E2' }}
+                  >
+                    <ScaledText baseSize={16} className="text-white font-semibold">Confirm</ScaledText>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
       {/* Draft Confirmation Modal */}
-      <Modal visible={showConfirmDraft} transparent={true} animationType="fade" onRequestClose={() => setShowConfirmDraft(false)}>
-        <View className="flex-1 justify-center items-center bg-black/50">
-          <View className="bg-white rounded-2xl p-6 mx-6 max-w-sm w-full">
-            <View className="items-center">
-              <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#6B728020' }}>
-                <Ionicons name="document-outline" size={32} color="#6B7280" />
-              </View>
-              <ScaledText baseSize={20} className="font-bold text-gray-900 mb-2 text-center">Save as Draft</ScaledText>
-              <ScaledText baseSize={14} className="text-gray-600 text-center mb-6 leading-6">This will save your report as a draft. You can edit or submit it later from the Drafts screen.</ScaledText>
-              <View className="flex-row gap-3 w-full">
-                <TouchableOpacity
-                  onPress={() => setShowConfirmDraft(false)}
-                  className="flex-1 py-3 rounded-xl items-center bg-gray-200"
-                >
-                  <ScaledText baseSize={16} className="text-gray-800 font-semibold">Cancel</ScaledText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={confirmSaveDraft}
-                  className="flex-1 py-3 rounded-xl items-center"
-                  style={{ backgroundColor: '#6B7280' }}
-                >
-                  <ScaledText baseSize={16} className="text-white font-semibold">Save Draft</ScaledText>
-                </TouchableOpacity>
+      {showConfirmDraft && (
+        <Modal visible={true} transparent={true} animationType="fade" onRequestClose={() => setShowConfirmDraft(false)}>
+          <View className="flex-1 justify-center items-center bg-black/50">
+            <View className="bg-white rounded-2xl p-6 mx-6 max-w-sm w-full">
+              <View className="items-center">
+                <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: '#6B728020' }}>
+                  <Ionicons name="document-outline" size={32} color="#6B7280" />
+                </View>
+                <ScaledText baseSize={20} className="font-bold text-gray-900 mb-2 text-center">Save as Draft</ScaledText>
+                <ScaledText baseSize={14} className="text-gray-600 text-center mb-6 leading-6">This will save your report as a draft. You can edit or submit it later from the Drafts screen.</ScaledText>
+                <View className="flex-row gap-3 w-full">
+                  <TouchableOpacity
+                    onPress={() => setShowConfirmDraft(false)}
+                    className="flex-1 py-3 rounded-xl items-center bg-gray-200"
+                  >
+                    <ScaledText baseSize={16} className="text-gray-800 font-semibold">Cancel</ScaledText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={confirmSaveDraft}
+                    className="flex-1 py-3 rounded-xl items-center"
+                    style={{ backgroundColor: '#6B7280' }}
+                  >
+                    <ScaledText baseSize={16} className="text-white font-semibold">Save Draft</ScaledText>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
-      <AppModal visible={modalVisible} onClose={() => setModalVisible(false)} icon={modalIcon} iconColor={modalIconColor} title={modalTitle} message={modalMessage} actions={[{ label: 'OK', onPress: () => setModalVisible(false), variant: 'primary' }]} />
+      {modalVisible && (
+        <AppModal visible={true} onClose={() => setModalVisible(false)} icon={modalIcon} iconColor={modalIconColor} title={modalTitle} message={modalMessage} actions={[{ label: 'OK', onPress: () => setModalVisible(false), variant: 'primary' }]} />
+      )}
     </KeyboardAvoidingView>
   )
 }

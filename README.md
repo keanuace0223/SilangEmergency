@@ -20,10 +20,8 @@ A comprehensive emergency reporting and management system for Silang Disaster Ri
 - **Expo Router** for navigation
 
 ### Backend
-- **Node.js** with Express
 - **Supabase** for database and authentication
 - **PostgreSQL** with optimized indexes
-- **JWT** for secure token management
 
 ## Getting Started
 
@@ -45,16 +43,11 @@ A comprehensive emergency reporting and management system for Silang Disaster Ri
    npm install
    ```
 
-3. **Install backend dependencies**
-   ```bash
-   cd backend
-   npm install
-   cd ..
-   ```
+3. **Dependencies are installed with step 2**
 
 4. **Set up environment variables**
    
-   Create a `.env` file in the backend directory:
+   Create a `.env` file in the project root (if needed):
    ```env
    SUPABASE_URL=your_supabase_url
    SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
@@ -73,23 +66,17 @@ A comprehensive emergency reporting and management system for Silang Disaster Ri
 
 6. **Run database migrations**
    ```bash
-   # Execute SQL files in backend/sql/ in order (01 through 05)
+   # Execute sql_migrations.sql in your Supabase SQL Editor
    ```
 
 ### Running the App
 
-1. **Start the backend server**
-   ```bash
-   cd backend
-   npm start
-   ```
-
-2. **Start the Expo development server**
+1. **Start the Expo development server**
    ```bash
    npx expo start
    ```
 
-3. **Open the app**
+2. **Open the app**
    - Press `a` for Android emulator
    - Press `i` for iOS simulator
    - Scan QR code with Expo Go app for physical device
@@ -102,12 +89,6 @@ SilangEmergency/
 │   ├── (admin)/             # Admin dashboard screens
 │   ├── (auth)/              # Authentication screens
 │   └── (tabs)/              # Main app tabs
-├── backend/                  # Backend API
-│   ├── config/              # Configuration files
-│   ├── routes/              # API route handlers
-│   ├── sql/                 # Database migrations
-│   ├── scripts/             # Setup scripts
-│   └── utils/               # Shared utilities
 ├── components/              # Reusable React components
 ├── src/                     # Core application logic
 │   ├── api/                 # API client

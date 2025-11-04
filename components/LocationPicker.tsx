@@ -397,7 +397,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
         </View>
       </View>
 
-      <AppModal visible={modalVisible} onClose={() => setModalVisible(false)} icon={modalIcon} iconColor={modalIconColor} title={modalTitle} message={modalMessage} actions={[{ label: 'OK', variant: 'primary', onPress: () => setModalVisible(false) }]} />
+      {modalVisible && (
+        <AppModal visible={true} onClose={() => setModalVisible(false)} icon={modalIcon} iconColor={modalIconColor} title={modalTitle} message={modalMessage} actions={[{ label: 'OK', variant: 'primary', onPress: () => setModalVisible(false) }]} />
+      )}
     </Modal>
   )
 }

@@ -31,6 +31,12 @@ const TabsLayout = () => {
 
   // Custom pill-style tab bar with centered add button
   const CustomTabBar = ({ state, descriptors, navigation }: any) => {
+    // Hide tab bar when on create-report screen
+    const currentRoute = state.routes[state.index]?.name;
+    if (currentRoute === 'create-report') {
+      return null;
+    }
+
     const activeColor = '#4A90E2';
     const inactiveColor = '#8E8E93';
     const iconMap: Record<string, any> = {
@@ -181,6 +187,7 @@ const TabsLayout = () => {
               href: null,
               presentation: 'modal',
               headerShown: false,
+              tabBarVisible: false,
             }}
           />
       </Tabs>
