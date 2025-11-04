@@ -175,6 +175,14 @@ const TabsLayout = () => {
             name="profile"
             options={{ title: 'Profile' }}
           />
+          <Tabs.Screen
+            name="create-report"
+            options={{
+              href: null,
+              presentation: 'modal',
+              headerShown: false,
+            }}
+          />
       </Tabs>
     </View>
   )
