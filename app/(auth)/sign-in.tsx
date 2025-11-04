@@ -231,16 +231,59 @@ export default function SignInScreen() {
     // Only create session if check passed (no active sessions found)
     // createSession will also check internally, but this is the primary enforcement
     try {
-      const created = await sessionManager.createSession(authUserId, false);
+      let created = await sessionManager.createSession(authUserId, false);
+      console.log('[sign-in] createSession result:', { 
+        success: created.success, 
+        existingSessions: created.existingSessions 
+      });
+      
       if (!created.success && created.existingSessions > 0) {
-        // This should not happen if checkActiveSessions worked, but double-check
-        setActiveSessions(await sessionManager.getUserSessions(authUserId));
-        setMultiDeviceModalVisible(true);
-        try { await supabase.auth.signOut(); } catch {}
-        return;
+        // Double-check database state before showing modal
+        // This handles cases where sessions were deleted but violation tracking still exists
+        console.log('[sign-in] Detected existing sessions, verifying database state');
+        try {
+          const verifySessions = await sessionManager.getUserSessions(authUserId);
+          if (verifySessions.length === 0) {
+            console.log('[sign-in] No sessions found in database, allowing login to proceed');
+            // Sessions were deleted, clear violation tracking and allow login
+            // Try creating session again (this time it should work)
+            const retryResult = await sessionManager.createSession(authUserId, false);
+            if (retryResult.success) {
+              // Update created to reflect successful retry
+              created = retryResult;
+              sessionManager.startHeartbeat();
+              // Continue with login flow - don't return, let it fall through to save user data
+              // The rest of the login flow will continue below
+            } else {
+              // If retry fails, show error
+              setMessageTitle('Login failed');
+              setMessageText('Unable to create session. Please try again.');
+              setMessageIcon('warning');
+              setMessageIconColor('#EF4444');
+              setMessageVisible(true);
+              try { await supabase.auth.signOut(); } catch {}
+              return;
+            }
+          } else {
+            // Sessions exist, show modal
+            console.log('[sign-in] Verified sessions exist in database, showing multi-device modal');
+            setActiveSessions(verifySessions);
+            setMultiDeviceModalVisible(true);
+            try { await supabase.auth.signOut(); } catch {}
+            return;
+          }
+        } catch (verifyError) {
+          console.warn('[sign-in] Failed to verify sessions, showing modal anyway:', verifyError);
+          // If verification fails, show modal to be safe
+          setActiveSessions(await sessionManager.getUserSessions(authUserId));
+          setMultiDeviceModalVisible(true);
+          try { await supabase.auth.signOut(); } catch {}
+          return;
+        }
       }
       if (!created.success) {
         // Session creation failed for other reasons
+        console.warn('[sign-in] Session creation failed with no existing sessions');
         setMessageTitle('Login failed');
         setMessageText('Unable to create session. Please try again.');
         setMessageIcon('warning');

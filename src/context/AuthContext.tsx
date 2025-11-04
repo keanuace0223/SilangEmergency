@@ -27,16 +27,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let isMounted = true;
     (async () => {
       try {
-        const { data } = await supabase.auth.getSession();
+        const { data, error } = await supabase.auth.getSession();
         if (!isMounted) return;
-        setFromSession(data.session ?? null);
+        
+        // Handle refresh token errors gracefully
+        if (error) {
+          const isRefreshTokenError = error.message?.includes('Refresh Token') || 
+                                      error.message?.includes('refresh_token') ||
+                                      error.status === 400;
+          
+          if (isRefreshTokenError) {
+            // Invalid refresh token - clear session silently
+            if (__DEV__) {
+              console.warn('Invalid refresh token detected, clearing session:', error.message);
+            }
+            try {
+              // Clear local storage to remove invalid tokens
+              await supabase.auth.signOut();
+            } catch (signOutError) {
+              // Ignore sign out errors
+            }
+            setFromSession(null);
+          } else {
+            // Other errors - still clear session to be safe
+            if (__DEV__) {
+              console.warn('Auth session error:', error.message);
+            }
+            setFromSession(null);
+          }
+        } else {
+          setFromSession(data.session ?? null);
+        }
+      } catch (error: any) {
+        // Handle unexpected errors
+        if (!isMounted) return;
+        if (__DEV__) {
+          console.warn('Unexpected auth error:', error);
+        }
+        setFromSession(null);
       } finally {
         if (isMounted) setIsLoading(false);
       }
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'SIGNED_IN') {
+      // Handle token refresh errors
+      if (event === 'TOKEN_REFRESHED') {
+        if (currentSession) {
+          setFromSession(currentSession);
+        } else {
+          // Token refresh failed - clear session
+          if (__DEV__) {
+            console.warn('Token refresh failed, clearing session');
+          }
+          try {
+            await supabase.auth.signOut();
+          } catch (signOutError) {
+            // Ignore sign out errors
+          }
+          setFromSession(null);
+        }
+        return;
+      }
+
+      if (event === 'USER_UPDATED' || event === 'SIGNED_IN') {
         setFromSession(currentSession ?? null);
         return;
       }
