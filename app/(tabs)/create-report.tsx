@@ -19,6 +19,9 @@ const CreateReport = () => {
   const insets = useSafeAreaInsets()
   const { user } = useUser()
   const { isOnline } = useSync()
+  const scrollViewRef = React.useRef<ScrollView>(null)
+  const descriptionInputRef = React.useRef<TextInput>(null)
+  const descriptionYPosition = React.useRef<number>(0)
 
   const [incidentType, setIncidentType] = React.useState<'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical' | 'Others' | ''>('')
   const [showIncidentMenu, setShowIncidentMenu] = React.useState(false)
@@ -554,25 +557,39 @@ const CreateReport = () => {
 
   return (
     <KeyboardAvoidingView 
-      className="flex-1" 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      className="flex-1 bg-white"
     >
-      <View className={`flex-1 bg-white`}>
-        <View className="px-4 pt-6 pb-4">
-          <View className="flex-row items-center justify-between">
-            <TouchableOpacity onPress={handleClose} className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center">
-              <Ionicons name="close" size={24} color="#6B7280" />
-            </TouchableOpacity>
-            <ScaledText baseSize={24} className="font-bold text-black">New Report</ScaledText>
-            <View className="w-10 h-10" />
-          </View>
+      <View className="flex-1">
+        {/* HEADER */}
+        <View 
+          className="flex-row items-center justify-between border-b border-gray-200 px-4"
+          style={{ 
+            paddingTop: insets.top + 8,
+            paddingBottom: 16 
+          }}
+        >
+          <TouchableOpacity onPress={handleClose} className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center">
+            <Ionicons name="close" size={24} color="#6B7280" />
+          </TouchableOpacity>
+          <ScaledText baseSize={24} className="font-bold text-black">New Report</ScaledText>
+          <View className="w-10 h-10" />
         </View>
+
+        {/* SCROLLABLE FORM CONTENT */}
         <ScrollView 
-          className="flex-1" 
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 + Math.max(insets.bottom, 16) }} 
-          showsVerticalScrollIndicator={false}
+          ref={scrollViewRef}
+          className="flex-1"
+          contentContainerStyle={{ 
+            paddingHorizontal: 20,
+            paddingTop: 16,
+            paddingBottom: 400 // Increased significantly to account for keyboard + footer + safe area
+          }} 
+          showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled={true}
+          keyboardDismissMode="interactive"
         >
           <ScaledText baseSize={14} className="mb-1 text-gray-600">Incident type</ScaledText>
           <View className="relative mb-4">
@@ -768,39 +785,86 @@ const CreateReport = () => {
             </TouchableOpacity>
           </View>
 
-          <ScaledText baseSize={14} className="mb-1 text-gray-600">Description</ScaledText>
-          <TextInput 
-            placeholder="Describe the incident..." 
-            value={description} 
-            onChangeText={setDescription} 
-            className={`border rounded-xl px-4 py-4 text-lg h-48 border-gray-300 bg-white text-black`} 
-            placeholderTextColor="#8E8E93" 
-            multiline 
-            textAlignVertical="top"
-            style={{ minHeight: 120 }}
-          />
+          <View 
+            onLayout={(event) => {
+              // Store description field position for scrolling
+              const { y } = event.nativeEvent.layout;
+              descriptionYPosition.current = y;
+            }}
+          >
+            <ScaledText baseSize={14} className="mb-1 text-gray-600">Description</ScaledText>
+            <TextInput 
+              ref={descriptionInputRef}
+              placeholder="Describe the incident..." 
+              value={description} 
+              onChangeText={setDescription} 
+              className={`border rounded-xl px-4 py-4 text-lg border-gray-300 bg-white text-black`} 
+              placeholderTextColor="#8E8E93" 
+              multiline 
+              textAlignVertical="top"
+              style={{ minHeight: 120 }}
+              onFocus={() => {
+                // Auto-scroll to reveal description field when tapped
+                // Use multiple attempts with increasing delays to ensure it works
+                const scrollToDescription = () => {
+                  if (!scrollViewRef.current) return;
+                  
+                  // Method 1: Scroll to end (most reliable)
+                  scrollViewRef.current.scrollToEnd({ animated: true });
+                  
+                  // Method 2: If we have position, try scrollTo as well
+                  if (descriptionYPosition.current > 0) {
+                    setTimeout(() => {
+                      if (scrollViewRef.current) {
+                        scrollViewRef.current.scrollTo({
+                          y: Math.max(0, descriptionYPosition.current - 200),
+                          animated: true
+                        });
+                      }
+                    }, 100);
+                  }
+                };
+                
+                // Try immediately
+                scrollToDescription();
+                
+                // Try after short delay (keyboard animation start)
+                setTimeout(scrollToDescription, 200);
+                
+                // Try after longer delay (keyboard fully shown)
+                setTimeout(scrollToDescription, 500);
+                
+                // Final attempt
+                setTimeout(scrollToDescription, 800);
+              }}
+            />
+          </View>
         </ScrollView>
 
-        <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-          <View className="flex-row gap-3">
-            <TouchableOpacity onPress={handleClose} className={`flex-1 h-12 rounded-xl items-center justify-center bg-gray-200`}>
-              <ScaledText baseSize={16} className="font-semibold text-gray-800">Cancel</ScaledText>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleSaveDraft} disabled={isSubmitting} className={`flex-1 h-12 rounded-xl items-center justify-center ${isSubmitting ? 'bg-gray-400' : 'bg-gray-600'}`}>
-              <ScaledText baseSize={16} className="text-white font-semibold">{isSubmitting ? 'Saving...' : 'Save Draft'}</ScaledText>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              disabled={isSubmitting || (limitStatus?.limitReached ?? false)} 
-              onPress={handleSave} 
-              className={`flex-1 h-12 rounded-xl items-center justify-center ${
-                (isSubmitting || (limitStatus?.limitReached ?? false)) ? 'bg-gray-400' : 'bg-[#4A90E2]'
-              }`}
-            >
-              <ScaledText baseSize={16} className="text-white font-semibold">
-                {isSubmitting ? 'Submitting...' : (limitStatus?.limitReached ? 'Limit Reached' : 'Submit')}
-              </ScaledText>
-            </TouchableOpacity>
-          </View>
+        {/* FOOTER (Outside ScrollView) */}
+        <View
+          className="absolute bottom-0 left-0 right-0 flex-row gap-3 bg-white border-t border-gray-200 px-4 pt-4"
+          style={{
+            paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 16
+          }}
+        >
+          <TouchableOpacity onPress={handleClose} className={`flex-1 h-12 rounded-xl items-center justify-center bg-gray-200`}>
+            <ScaledText baseSize={16} className="font-semibold text-gray-800">Cancel</ScaledText>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSaveDraft} disabled={isSubmitting} className={`flex-1 h-12 rounded-xl items-center justify-center ${isSubmitting ? 'bg-gray-400' : 'bg-gray-600'}`}>
+            <ScaledText baseSize={16} className="text-white font-semibold">{isSubmitting ? 'Saving...' : 'Save Draft'}</ScaledText>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            disabled={isSubmitting || (limitStatus?.limitReached ?? false)} 
+            onPress={handleSave} 
+            className={`flex-1 h-12 rounded-xl items-center justify-center ${
+              (isSubmitting || (limitStatus?.limitReached ?? false)) ? 'bg-gray-400' : 'bg-[#4A90E2]'
+            }`}
+          >
+            <ScaledText baseSize={16} className="text-white font-semibold">
+              {isSubmitting ? 'Submitting...' : (limitStatus?.limitReached ? 'Limit Reached' : 'Submit')}
+            </ScaledText>
+          </TouchableOpacity>
         </View>
       </View>
 
