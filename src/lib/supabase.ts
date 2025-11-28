@@ -470,10 +470,39 @@ export const db = {
   },
 
   getReportLimitStatus: async (userId: string) => {
-    const { data, error } = await supabase.rpc('get_report_limit_status', {
-      p_user_id: userId
-    });
-    return { data, error };
+    try {
+      // Get reports from last hour
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data: reports, error } = await supabase
+        .from('reports')
+        .select('id', { count: 'exact', head: false })
+        .eq('user_id', userId)
+        .gte('created_at', oneHourAgo);
+      
+      if (error) {
+        console.warn('Failed to fetch report count:', error);
+        return { 
+          data: { count: 0, remaining: 3, limitReached: false, limit: 3 }, 
+          error 
+        };
+      }
+      
+      const count = reports?.length || 0;
+      const limit = 3;
+      const remaining = Math.max(0, limit - count);
+      const limitReached = count >= limit;
+      
+      return { 
+        data: { count, remaining, limitReached, limit },
+        error: null
+      };
+    } catch (err) {
+      console.warn('Error checking report limit:', err);
+      return { 
+        data: { count: 0, remaining: 3, limitReached: false, limit: 3 },
+        error: err as any
+      };
+    }
   }
 };
 

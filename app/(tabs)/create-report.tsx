@@ -31,6 +31,7 @@ const CreateReport = () => {
   const [patientStatus, setPatientStatus] = React.useState<'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | ''>('')
   const [urgency, setUrgency] = React.useState<'Low' | 'Moderate' | 'High' | ''>('')
   const [othersSpecification, setOthersSpecification] = React.useState('')
+  const [hasPatient, setHasPatient] = React.useState(false)
   const [limitStatus, setLimitStatus] = React.useState<{
     count: number;
     remaining: number;
@@ -92,6 +93,7 @@ const CreateReport = () => {
     setIsSubmitting(false)
     setSelectedLocation(null)
     setOthersSpecification('')
+    setHasPatient(false)
   }
 
   const handleClose = () => {
@@ -106,11 +108,13 @@ const CreateReport = () => {
       return
     }
     // Validate urgency/patient status based on incident type
+    const noPatientTypes = ['Fire', 'Flood', 'Earthquake', 'Electrical']
+    
     if (incidentType === 'Vehicular Accident' && !patientStatus) {
       showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
       return
     }
-    if (incidentType !== 'Vehicular Accident' && !urgency) {
+    if (!noPatientTypes.includes(incidentType) && incidentType !== 'Vehicular Accident' && incidentType !== 'Others' && !urgency) {
       showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
       return
     }
@@ -130,11 +134,13 @@ const CreateReport = () => {
       return
     }
     // Validate urgency/patient status based on incident type
+    const noPatientTypes = ['Fire', 'Flood', 'Earthquake', 'Electrical']
+    
     if (incidentType === 'Vehicular Accident' && !patientStatus) {
       showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
       return
     }
-    if (incidentType !== 'Vehicular Accident' && !urgency) {
+    if (!noPatientTypes.includes(incidentType) && incidentType !== 'Vehicular Accident' && incidentType !== 'Others' && !urgency) {
       showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
       return
     }
@@ -174,6 +180,7 @@ const CreateReport = () => {
       // Determine urgency level based on incident type
       let urgencyLevel: 'Low' | 'Moderate' | 'High' = 'Low'
       let finalPatientStatus: string | null = null
+      const noPatientTypes = ['Fire', 'Flood', 'Earthquake', 'Electrical']
       
       if (incidentType === 'Vehicular Accident') {
         // For Vehicular Accident, use AVPU patient status
@@ -183,6 +190,10 @@ const CreateReport = () => {
           patientStatus === 'Alert' ? 'Low' :
           patientStatus === 'Voice' ? 'Moderate' :
           patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
+      } else if (noPatientTypes.includes(incidentType)) {
+        // For no-patient incidents, set default urgency
+        urgencyLevel = 'Low'
+        finalPatientStatus = null
       } else {
         // For other incident types, use urgency level directly
         urgencyLevel = urgency as 'Low' | 'Moderate' | 'High'
@@ -321,6 +332,7 @@ const CreateReport = () => {
       // Determine urgency level based on incident type
       let urgencyLevel: 'Low' | 'Moderate' | 'High' = 'Low'
       let finalPatientStatus: string | null = null
+      const noPatientTypes = ['Fire', 'Flood', 'Earthquake', 'Electrical']
       
       if (incidentType === 'Vehicular Accident') {
         // For Vehicular Accident, use AVPU patient status
@@ -330,6 +342,10 @@ const CreateReport = () => {
           patientStatus === 'Alert' ? 'Low' :
           patientStatus === 'Voice' ? 'Moderate' :
           patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
+      } else if (noPatientTypes.includes(incidentType)) {
+        // For no-patient incidents, set default urgency
+        urgencyLevel = 'Low'
+        finalPatientStatus = null
       } else {
         // For other incident types, use urgency level directly
         urgencyLevel = urgency as 'Low' | 'Moderate' | 'High'
@@ -507,7 +523,7 @@ const CreateReport = () => {
     isSelected: boolean, 
     onPress: () => void 
   }) => {
-    const baseClassName = 'flex-1 min-w-[48%] rounded-xl border p-3'
+    const baseClassName = 'rounded-xl border p-3 items-center justify-center'
     const selectedClassName = 'shadow-lg'
     const unselectedClassName = 'bg-white border-gray-300'
     
@@ -516,25 +532,28 @@ const CreateReport = () => {
         onPress={onPress}
         activeOpacity={0.8}
         className={isSelected ? `${baseClassName} ${selectedClassName}` : `${baseClassName} ${unselectedClassName}`}
-        style={isSelected ? {
-          backgroundColor: opt.color,
-          borderColor: opt.color,
-          shadowColor: opt.color,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 5,
-          elevation: 8,
-        } : {}}
+        style={[
+          { flex: 1 },
+          isSelected ? {
+            backgroundColor: opt.color,
+            borderColor: opt.color,
+            shadowColor: opt.color,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 5,
+            elevation: 8,
+          } : {}
+        ]}
       >
         <View className="flex-row items-center mb-1">
           <Ionicons
             name={opt.icon as any}
-            size={20}
+            size={16}
             color={isSelected ? 'white' : opt.color}
-            style={{ marginRight: 8 }}
+            style={{ marginRight: 6 }}
           />
           <ScaledText
-            baseSize={18}
+            baseSize={14}
             className={isSelected ? 'font-semibold text-white' : 'font-semibold text-gray-900'}
           >
             {opt.label}
@@ -705,11 +724,46 @@ const CreateReport = () => {
                 </View>
               </View>
             </>
+          ) : incidentType === 'Fire' || incidentType === 'Flood' || incidentType === 'Earthquake' || incidentType === 'Electrical' ? (
+            <>
+              <TouchableOpacity 
+                onPress={() => setHasPatient(!hasPatient)}
+                activeOpacity={1}
+                className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200 flex-row items-center"
+              >
+                <View className={`w-6 h-6 rounded border-2 items-center justify-center mr-3 ${hasPatient ? 'bg-blue-500 border-blue-500' : 'border-gray-400'}`}>
+                  {hasPatient && (
+                    <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                  )}
+                </View>
+                <ScaledText baseSize={14} className="text-gray-700 font-semibold flex-1">
+                  Patient involved in this incident
+                </ScaledText>
+              </TouchableOpacity>
+              
+              {hasPatient && (
+                <>
+                  <ScaledText baseSize={14} className="mb-1 text-gray-600">Patient Status (AVPU)</ScaledText>
+                  <View className="mb-4">
+                    <View className="flex-row flex-wrap gap-2 mb-2">
+                      {avpuOptions.map(opt => (
+                        <AVPUButton 
+                          key={opt.status} 
+                          opt={opt} 
+                          isSelected={patientStatus === opt.status}
+                          onPress={() => setPatientStatus(opt.status)}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                </>
+              )}
+            </>
           ) : incidentType !== '' ? (
             <>
               <ScaledText baseSize={14} className="mb-1 text-gray-600">Urgency Level</ScaledText>
               <View className="mb-4">
-                <View className="flex-row flex-wrap gap-2 mb-2">
+                <View className="flex-row gap-2 mb-2">
                   {urgencyOptions.map(opt => (
                     <UrgencyButton 
                       key={opt.level} 

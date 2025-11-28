@@ -126,7 +126,10 @@ export default function AdminUserReportsScreen() {
     return s.slice(0, 4).toUpperCase();
   };
   const renderReportItem = ({ item }: { item: any }) => {
-    const statusInfo = getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low');
+    // Only show status tag for Vehicular Accident and Others incident types
+    const shouldShowStatus = item.incident_type === 'Vehicular Accident' || item.incident_type === 'Others';
+    const statusInfo = shouldShowStatus ? getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low') : null;
+    
     return (
       <TouchableOpacity activeOpacity={0.9} className="bg-white rounded-2xl border border-gray-100 p-4 mb-3" onPress={() => { setSelectedReport(item); setShowDetail(true); }} style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 10 }}>
         <View className="flex-row">
@@ -136,12 +139,14 @@ export default function AdminUserReportsScreen() {
           <View className="flex-1">
             <View className="flex-row items-center justify-between">
               <Text className="text-base font-bold text-gray-900" numberOfLines={1}>{item.incident_type}</Text>
-              <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
-                <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
-                <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
-                  {statusInfo.text}
-                </Text>
-              </View>
+              {statusInfo && (
+                <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
+                  <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
+                  <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
+                    {statusInfo.text}
+                  </Text>
+                </View>
+              )}
             </View>
           {item.description ? (
             <Text className="text-gray-600 text-xs mt-1" numberOfLines={2}>{item.description}</Text>

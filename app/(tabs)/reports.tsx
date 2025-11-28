@@ -309,7 +309,9 @@ const Reports = () => {
   // Render report item
   const renderReportItem = ({ item }: { item: any }) => {
     const syncInfo = getSyncStatusInfo(item)
-    const statusInfo = getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low');
+    // Only show status tag for Vehicular Accident and Others incident types
+    const shouldShowStatus = item.incident_type === 'Vehicular Accident' || item.incident_type === 'Others';
+    const statusInfo = shouldShowStatus ? getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low') : null;
     
     return (
       <TouchableOpacity onPress={() => handleReportPress(item)} activeOpacity={0.8} className="mx-6">
@@ -335,12 +337,14 @@ const Reports = () => {
                   </View>
                 </View>
               </View>
-              <View className="px-2.5 py-1.5 rounded-full shadow-sm flex-row items-center" style={{ backgroundColor: statusInfo.color, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
-                <Ionicons name={statusInfo.icon as any} size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Caption className="font-bold tracking-wide" style={{ color: '#FFFFFF' }}>
-                  {statusInfo.text}
-                </Caption>
-              </View>
+              {statusInfo && (
+                <View className="px-2.5 py-1.5 rounded-full shadow-sm flex-row items-center" style={{ backgroundColor: statusInfo.color, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
+                  <Ionicons name={statusInfo.icon as any} size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Caption className="font-bold tracking-wide" style={{ color: '#FFFFFF' }}>
+                    {statusInfo.text}
+                  </Caption>
+                </View>
+              )}
             </View>
           </View>
 
@@ -593,11 +597,13 @@ const Reports = () => {
                 </View>
                 <View className="flex-1">
                   <ScaledText baseSize={22} className={`font-bold mb-1 text-gray-900`}>{selectedReport.incident_type}</ScaledText>
-                  <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_level || selectedReport.urgency_tag || 'Low') + 'E6' }}>
-                    <ScaledText baseSize={14} className="font-semibold" style={{ color: '#FFFFFF' }}>
-                      {selectedReport.patient_status ? String(selectedReport.patient_status).toUpperCase() : String(selectedReport.urgency_tag || 'Low').toUpperCase()} PRIORITY
-                    </ScaledText>
-                  </View>
+                  {(selectedReport.incident_type === 'Vehicular Accident' || selectedReport.incident_type === 'Others') && (
+                    <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_level || selectedReport.urgency_tag || 'Low') + 'E6' }}>
+                      <ScaledText baseSize={14} className="font-semibold" style={{ color: '#FFFFFF' }}>
+                        {selectedReport.patient_status ? String(selectedReport.patient_status).toUpperCase() : String(selectedReport.urgency_tag || 'Low').toUpperCase()}
+                      </ScaledText>
+                    </View>
+                  )}
                 </View>
               </View>
 

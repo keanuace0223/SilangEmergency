@@ -231,7 +231,10 @@ const Home = () => {
   }
 
   const renderReportItem = ({ item }: { item: any }) => {
-    const statusInfo = getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low');
+    // Only show status tag for Vehicular Accident and Others incident types
+    const shouldShowStatus = item.incident_type === 'Vehicular Accident' || item.incident_type === 'Others';
+    const statusInfo = shouldShowStatus ? getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low') : null;
+    
     return (
       <TouchableOpacity activeOpacity={0.9} className="bg-white rounded-2xl border border-gray-100 p-4" onPress={() => { setSelectedReport(item); setShowDetail(true) }}>
         <View className="flex-row">
@@ -241,12 +244,14 @@ const Home = () => {
           <View className="flex-1">
             <View className="flex-row items-center justify-between">
               <Text className="text-base font-bold text-gray-900" numberOfLines={1}>{item.incident_type}</Text>
-              <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
-                <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
-                <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
-                  {statusInfo.text}
-                </Text>
-              </View>
+              {statusInfo && (
+                <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
+                  <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
+                  <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
+                    {statusInfo.text}
+                  </Text>
+                </View>
+              )}
             </View>
           {item.description ? (
             <Text className="text-gray-600 text-xs mt-1" numberOfLines={2}>{item.description}</Text>
@@ -355,9 +360,9 @@ const Home = () => {
                 <ScaledText baseSize={12} style={{ color: '#FFFFFF' }}>Total Reports</ScaledText>
                 <ScaledText baseSize={22} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{reports.length}</ScaledText>
               </View>
-              <View className="flex-1 rounded-xl" style={{ backgroundColor: '#EF4444', padding: s(12), marginLeft: s(8) }}>
-                <ScaledText baseSize={12} style={{ color: '#FFFFFF' }}>High Urgency</ScaledText>
-                <ScaledText baseSize={22} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{countsByUrgency['High'] || 0}</ScaledText>
+              <View className="flex-1 rounded-xl" style={{ backgroundColor: '#10B981', padding: s(12), marginLeft: s(8) }}>
+                <ScaledText baseSize={12} style={{ color: '#FFFFFF' }}>Reports Today</ScaledText>
+                <ScaledText baseSize={22} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{reports.filter(r => new Date(r.incident_datetime).toDateString() === new Date().toDateString()).length}</ScaledText>
               </View>
             </View>
 
@@ -382,20 +387,6 @@ const Home = () => {
               </View>
             </View>
 
-            {/* By urgency */}
-            <View style={{ marginTop: s(8) }}>
-              <ScaledText baseSize={13} className="font-semibold text-gray-800 mb-2">Reports by Urgency</ScaledText>
-              <View className="flex-row flex-wrap -mx-1">
-                {urgencyEntries.map(([level, count]: [string, number]) => (
-                  <View key={level} className="w-1/3 px-1 mb-2">
-                    <View className="rounded-xl items-center" style={{ backgroundColor: getUrgencyColor(level) + 'E6', padding: s(12) }}>
-                      <ScaledText baseSize={12} style={{ color: '#FFFFFF' }} numberOfLines={1}>{level}</ScaledText>
-                      <ScaledText baseSize={20} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{count}</ScaledText>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
           </View>
         </View>
 
@@ -460,11 +451,13 @@ const Home = () => {
                 </View>
                 <View className="flex-1">
                   <Text className={`text-2xl font-bold mb-1 text-gray-900`}>{selectedReport.incident_type}</Text>
-                  <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_level || selectedReport.urgency_tag || 'Low') + 'E6' }}>
-                    <Text className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>
-                      {selectedReport.patient_status ? String(selectedReport.patient_status).toUpperCase() : String(selectedReport.urgency_tag || 'Low').toUpperCase()}
-                    </Text>
-                  </View>
+                  {(selectedReport.incident_type === 'Vehicular Accident' || selectedReport.incident_type === 'Others') && (
+                    <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_level || selectedReport.urgency_tag || 'Low') + 'E6' }}>
+                      <Text className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>
+                        {selectedReport.patient_status ? String(selectedReport.patient_status).toUpperCase() : String(selectedReport.urgency_tag || 'Low').toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
 

@@ -284,6 +284,8 @@ const Drafts = () => {
   // Render draft item
   const renderDraftItem = ({ item }: { item: any }) => {
     const statusInfo = getStatusInfo(item)
+    // Only show status tag for Vehicular Accident and Others incident types
+    const shouldShowStatus = item.incident_type === 'Vehicular Accident' || item.incident_type === 'Others';
     
     return (
       <TouchableOpacity onPress={() => handleItemPress(item)} activeOpacity={0.8} className="mx-6">
@@ -324,11 +326,13 @@ const Drafts = () => {
                   </View>
                 </View>
               </View>
-              <View className="px-2 py-1 rounded-full shadow-sm flex-shrink-0" style={{ backgroundColor: getUrgencyColor(item.urgency_level || item.urgency_tag || 'Low'), shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
-                <Caption className="font-bold tracking-wide" style={{ color: '#FFFFFF', fontSize: 10 }}>
-                  {item.patient_status ? String(item.patient_status).toUpperCase() : String(item.urgency_tag || 'Low').toUpperCase()}
-                </Caption>
-              </View>
+              {shouldShowStatus && (
+                <View className="px-2 py-1 rounded-full shadow-sm flex-shrink-0" style={{ backgroundColor: getUrgencyColor(item.urgency_level || item.urgency_tag || 'Low'), shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
+                  <Caption className="font-bold tracking-wide" style={{ color: '#FFFFFF', fontSize: 10 }}>
+                    {item.patient_status ? String(item.patient_status).toUpperCase() : String(item.urgency_tag || 'Low').toUpperCase()}
+                  </Caption>
+                </View>
+              )}
             </View>
           </View>
 
@@ -436,11 +440,13 @@ const Drafts = () => {
                 </View>
                 <View className="flex-1">
                   <ScaledText baseSize={22} className={`font-bold mb-1 text-gray-900`}>{selectedDraft.incident_type}</ScaledText>
-                  <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedDraft.urgency_level || selectedDraft.urgency_tag || 'Low') + 'E6' }}>
-                    <ScaledText baseSize={14} className="font-semibold" style={{ color: '#FFFFFF' }}>
-                      {selectedDraft.patient_status ? String(selectedDraft.patient_status).toUpperCase() : String(selectedDraft.urgency_tag || 'Low').toUpperCase()} PRIORITY
-                    </ScaledText>
-                  </View>
+                  {(selectedDraft.incident_type === 'Vehicular Accident' || selectedDraft.incident_type === 'Others') && (
+                    <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedDraft.urgency_level || selectedDraft.urgency_tag || 'Low') + 'E6' }}>
+                      <ScaledText baseSize={14} className="font-semibold" style={{ color: '#FFFFFF' }}>
+                        {selectedDraft.patient_status ? String(selectedDraft.patient_status).toUpperCase() : String(selectedDraft.urgency_tag || 'Low').toUpperCase()}
+                      </ScaledText>
+                    </View>
+                  )}
                 </View>
               </View>
 

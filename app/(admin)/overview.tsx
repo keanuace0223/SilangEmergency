@@ -107,25 +107,30 @@ export default function AdminOverviewScreen() {
   };
 
   const renderRecent = ({ item }: { item: any }) => {
-    const statusInfo = getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low');
+    // Only show status tag for Vehicular Accident and Others incident types
+    const shouldShowStatus = item.incident_type === 'Vehicular Accident' || item.incident_type === 'Others';
+    const statusInfo = shouldShowStatus ? getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low') : null;
+    
     return (
     <View className="bg-white rounded-2xl border border-gray-100 p-4 mb-3" style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 10 }}>
       <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center">
+        <View className="flex-row items-center flex-1">
           <View className="w-10 h-10 rounded-xl bg-blue-50 items-center justify-center mr-3">
             <Ionicons name="document-text" size={18} color="#4A90E2" />
           </View>
-          <View>
+          <View className="flex-1">
             <ScaledText baseSize={14} className="font-semibold text-gray-900">{item.incident_type}</ScaledText>
             <Text className="text-xs text-gray-500">{new Date(item.incident_datetime || item.created_at).toLocaleString()}</Text>
           </View>
         </View>
-        <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
-          <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
-          <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
-            {statusInfo.text}
-          </Text>
-        </View>
+        {statusInfo && (
+          <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
+            <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
+            <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
+              {statusInfo.text}
+            </Text>
+          </View>
+        )}
       </View>
       {item.description ? <Text className="text-gray-600 text-sm mt-2" numberOfLines={2}>{item.description}</Text> : null}
     </View>
@@ -206,21 +211,6 @@ export default function AdminOverviewScreen() {
                   {incidentEntries.length === 0 && !loading ? (
                     <ScaledText baseSize={13} className="text-gray-500">No reports yet.</ScaledText>
                   ) : null}
-                </View>
-              </View>
-
-              {/* Reports by Urgency (mirror tabs/index) */}
-              <View style={{ marginTop: s(8), marginBottom: s(8) }}>
-                <ScaledText baseSize={13} className="font-semibold text-gray-800 mb-2">Reports by Urgency</ScaledText>
-                <View className="flex-row flex-wrap -mx-1">
-                  {urgencyEntries.map(([level, count]: [string, number]) => (
-                    <View key={level} className="w-1/3 px-1 mb-2">
-                      <View className="rounded-xl items-center" style={{ backgroundColor: (level === 'High' ? '#EF4444' : level === 'Moderate' ? '#F59E0B' : '#10B981') + 'E6', padding: s(12) }}>
-                        <ScaledText baseSize={12} style={{ color: '#FFFFFF' }} numberOfLines={1}>{level}</ScaledText>
-                        <ScaledText baseSize={20} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{count}</ScaledText>
-                      </View>
-                    </View>
-                  ))}
                 </View>
               </View>
 
