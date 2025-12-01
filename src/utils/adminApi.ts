@@ -19,6 +19,7 @@ export interface AdminUser {
   name: string;
   barangay: string;
   barangay_position: string;
+  contact_number?: string;
   profile_pic?: string;
   created_at?: string;
   reportCount?: number;
@@ -29,6 +30,7 @@ export interface CreateUserRequest {
   name: string;
   barangay: string;
   barangay_position: string;
+  contact_number?: string;
   password: string;
 }
 
@@ -172,7 +174,8 @@ class AdminApiService {
           userid: userData.userid,
           name: userData.name,
           barangay: userData.barangay,
-          barangay_position: userData.barangay_position
+          barangay_position: userData.barangay_position,
+          contact_number: userData.contact_number
         })
         .select()
         .single();

@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons'
+import * as Contacts from 'expo-contacts'
 import * as ImagePicker from 'expo-image-picker'
 import { useRouter } from 'expo-router'
 import React from 'react'
-import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AppModal from '../../components/AppModal'
 import LocationPicker from '../../components/LocationPicker'
@@ -28,6 +29,7 @@ const CreateReport = () => {
   const [showLocationPicker, setShowLocationPicker] = React.useState(false)
   const [selectedLocation, setSelectedLocation] = React.useState<{ latitude: number; longitude: number; address?: string } | null>(null)
   const [location, setLocation] = React.useState('')
+  const [contactNumber, setContactNumber] = React.useState('')
   const [patientStatus, setPatientStatus] = React.useState<'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | ''>('')
   const [urgency, setUrgency] = React.useState<'Low' | 'Moderate' | 'High' | ''>('')
   const [othersSpecification, setOthersSpecification] = React.useState('')
@@ -45,6 +47,12 @@ const CreateReport = () => {
   const [isOptimizingImages, setIsOptimizingImages] = React.useState(false)
   const [showConfirmSubmit, setShowConfirmSubmit] = React.useState(false)
   const [showConfirmDraft, setShowConfirmDraft] = React.useState(false)
+
+  const [showContactModal, setShowContactModal] = React.useState(false)
+  const [contacts, setContacts] = React.useState<Contacts.Contact[]>([])
+  const [filteredContacts, setFilteredContacts] = React.useState<Contacts.Contact[]>([])
+  const [contactSearch, setContactSearch] = React.useState('')
+  const [isLoadingContacts, setIsLoadingContacts] = React.useState(false)
 
   const [modalVisible, setModalVisible] = React.useState(false)
   const [modalTitle, setModalTitle] = React.useState('')
@@ -82,10 +90,86 @@ const CreateReport = () => {
     }
   }, [user?.id, fetchLimitStatus]);
 
+  React.useEffect(() => {
+    if (user?.contact_number) {
+      setContactNumber(prev => prev || user.contact_number || '');
+    }
+  }, [user?.contact_number]);
+
+  const formatContactNumberFromContact = (raw: string) => {
+    if (!raw) return ''
+
+    // Keep digits and leading + for initial processing
+    let normalized = raw.trim().replace(/[^\d+]/g, '')
+
+    // Convert +63 or 63 prefixes to 0 for Philippine numbers
+    if (normalized.startsWith('+63')) {
+      normalized = '0' + normalized.slice(3)
+    } else if (normalized.startsWith('63')) {
+      normalized = '0' + normalized.slice(2)
+    }
+
+    // Strip any remaining non-digits
+    normalized = normalized.replace(/\D/g, '')
+
+    // Handle numbers like 9XXXXXXXXX (10 digits starting with 9)
+    if (normalized.length === 10 && normalized.startsWith('9')) {
+      normalized = '0' + normalized
+    }
+
+    return normalized
+  }
+
+  const handlePickContact = async () => {
+    try {
+      setIsLoadingContacts(true)
+
+      const { status } = await Contacts.requestPermissionsAsync()
+      if (status !== 'granted') {
+        showModal('Permission required', 'Contacts permission is required to pick a phone number.', 'warning', '#EF4444')
+        return
+      }
+
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers],
+      })
+
+      const contactsWithPhones = (data || []).filter(
+        c => c.phoneNumbers && c.phoneNumbers.length > 0
+      )
+
+      contactsWithPhones.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+
+      setContacts(contactsWithPhones)
+      setFilteredContacts(contactsWithPhones)
+      setContactSearch('')
+      setShowContactModal(true)
+    } catch (error) {
+      console.error('Error fetching contacts:', error)
+      showModal('Contacts error', 'Failed to load contacts. Please try again.', 'warning', '#EF4444')
+    } finally {
+      setIsLoadingContacts(false)
+    }
+  }
+
+  const handleContactSearchChange = (text: string) => {
+    setContactSearch(text)
+
+    if (!text.trim()) {
+      setFilteredContacts(contacts)
+      return
+    }
+
+    const lower = text.toLowerCase()
+    const filtered = contacts.filter(c => (c.name || '').toLowerCase().includes(lower))
+    setFilteredContacts(filtered)
+  }
+
   const resetForm = () => {
     setIncidentType('')
     setShowIncidentMenu(false)
     setLocation('')
+    setContactNumber('')
     setPatientStatus('')
     setUrgency('')
     setDescription('')
@@ -105,6 +189,15 @@ const CreateReport = () => {
     // Validate first
     if (!incidentType || !location || !description) {
       showModal('Validation error', 'Please fill in all required fields', 'warning', '#EF4444')
+      return
+    }
+    if (!contactNumber.trim()) {
+      showModal('Validation error', 'Please enter a contact number', 'warning', '#EF4444')
+      return
+    }
+    const normalizedContact = contactNumber.replace(/\D/g, '')
+    if (normalizedContact.length !== 11 || !normalizedContact.startsWith('09')) {
+      showModal('Validation error', 'Please enter a valid 11-digit mobile number starting with 09', 'warning', '#EF4444')
       return
     }
     // Validate urgency/patient status based on incident type
@@ -131,6 +224,15 @@ const CreateReport = () => {
     // Validate first
     if (!incidentType || !location || !description) {
       showModal('Validation error', 'Please fill in all required fields', 'warning', '#EF4444')
+      return
+    }
+    if (!contactNumber.trim()) {
+      showModal('Validation error', 'Please enter a contact number', 'warning', '#EF4444')
+      return
+    }
+    const normalizedContact = contactNumber.replace(/\D/g, '')
+    if (normalizedContact.length !== 11 || !normalizedContact.startsWith('09')) {
+      showModal('Validation error', 'Please enter a valid 11-digit mobile number starting with 09', 'warning', '#EF4444')
       return
     }
     // Validate urgency/patient status based on incident type
@@ -192,8 +294,16 @@ const CreateReport = () => {
           patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
       } else if (noPatientTypes.includes(incidentType)) {
         // For no-patient incidents, set default urgency
-        urgencyLevel = 'Low'
-        finalPatientStatus = null
+        if (hasPatient) {
+          finalPatientStatus = patientStatus
+          urgencyLevel = 
+            patientStatus === 'Alert' ? 'Low' :
+            patientStatus === 'Voice' ? 'Moderate' :
+            patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
+        } else {
+          finalPatientStatus = 'No Patient'
+          urgencyLevel = 'Low'
+        }
       } else {
         // For other incident types, use urgency level directly
         urgencyLevel = urgency as 'Low' | 'Moderate' | 'High'
@@ -205,6 +315,7 @@ const CreateReport = () => {
         user_id: user.id,
         incident_type: incidentType === 'Others' ? othersSpecification : (incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical'),
         location: selectedLocation ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}` : location,
+        contact_number: contactNumber,
         patient_status: finalPatientStatus as any,
         urgency_level: urgencyLevel,
         urgency_tag: urgencyLevel,
@@ -236,6 +347,7 @@ const CreateReport = () => {
           const apiReportData = {
             incidentType: reportData.incident_type,
             location: reportData.location,
+            contactNumber: reportData.contact_number,
             patientStatus: reportData.patient_status,
             urgencyLevel: reportData.urgency_level,
             description: reportData.description,
@@ -344,8 +456,16 @@ const CreateReport = () => {
           patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
       } else if (noPatientTypes.includes(incidentType)) {
         // For no-patient incidents, set default urgency
-        urgencyLevel = 'Low'
-        finalPatientStatus = null
+        if (hasPatient) {
+          finalPatientStatus = patientStatus
+          urgencyLevel = 
+            patientStatus === 'Alert' ? 'Low' :
+            patientStatus === 'Voice' ? 'Moderate' :
+            patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
+        } else {
+          finalPatientStatus = 'No Patient'
+          urgencyLevel = 'Low'
+        }
       } else {
         // For other incident types, use urgency level directly
         urgencyLevel = urgency as 'Low' | 'Moderate' | 'High'
@@ -357,6 +477,7 @@ const CreateReport = () => {
         user_id: user.id,
         incident_type: incidentType === 'Others' ? othersSpecification : (incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical'),
         location: selectedLocation ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}` : location,
+        contact_number: contactNumber,
         patient_status: finalPatientStatus as any,
         urgency_level: urgencyLevel,
         urgency_tag: urgencyLevel,
@@ -391,62 +512,114 @@ const CreateReport = () => {
     }
   }
 
-  const pickMedia = async () => {
+  const processSelectedAssets = async (assets: ImagePicker.ImagePickerAsset[]) => {
+    if (!assets || assets.length === 0) return
+
+    setIsOptimizingImages(true)
+
+    // Add images with loading state first for immediate feedback
+    const loadingAssets = assets.map(a => ({
+      uri: a.uri,
+      type: a.type,
+      isLoading: true,
+    }))
+    setMedia(prev => [...prev, ...loadingAssets])
+
+    // Optimize images in the background
+    try {
+      const optimizedAssets = await Promise.all(
+        assets.map(async (asset, index) => {
+          try {
+            const optimizedUri = await compressImage(asset.uri, 800) // 800KB max
+            return {
+              uri: optimizedUri,
+              type: asset.type,
+              isLoading: false,
+            }
+          } catch (error) {
+            console.error(`Failed to optimize image ${index}:`, error)
+            return {
+              uri: asset.uri,
+              type: asset.type,
+              isLoading: false,
+            }
+          }
+        })
+      )
+
+      // Replace loading images with optimized ones
+      setMedia(prev => {
+        const withoutLoading = prev.filter(m => !m.isLoading)
+        return [...withoutLoading, ...optimizedAssets]
+      })
+    } catch (error) {
+      console.error('Error optimizing images:', error)
+      showModal('Optimization error', 'Some images could not be optimized, but they were added.', 'warning', '#F59E0B')
+    } finally {
+      setIsOptimizingImages(false)
+    }
+  }
+
+  const handlePickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-    if (status !== 'granted') return
-    
+    if (status !== 'granted') {
+      showModal('Permission required', 'Media library permission is required to select photos.', 'warning', '#EF4444')
+      return
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images, // Only images for faster processing
       allowsMultipleSelection: true,
       quality: 0.8,
       selectionLimit: 5,
     })
-    
+
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      setIsOptimizingImages(true)
-      
-      // Add images with loading state first for immediate feedback
-      const loadingAssets = result.assets.map(a => ({ 
-        uri: a.uri, 
-        type: a.type,
-        isLoading: true 
-      }))
-      setMedia(prev => [...prev, ...loadingAssets])
-      
-      // Optimize images in the background
-      try {
-        const optimizedAssets = await Promise.all(
-          result.assets.map(async (asset, index) => {
-            try {
-              const optimizedUri = await compressImage(asset.uri, 800) // 800KB max
-              return { 
-                uri: optimizedUri, 
-                type: asset.type,
-                isLoading: false 
-              }
-            } catch (error) {
-              console.error(`Failed to optimize image ${index}:`, error)
-              return { 
-                uri: asset.uri, 
-                type: asset.type,
-                isLoading: false 
-              }
-            }
-          })
-        )
-        
-        // Replace loading images with optimized ones
-        setMedia(prev => {
-          const withoutLoading = prev.filter(m => !m.isLoading)
-          return [...withoutLoading, ...optimizedAssets]
-        })
-      } catch (error) {
-        console.error('Error optimizing images:', error)
-        showModal('Optimization error', 'Some images could not be optimized, but they were added.', 'warning', '#F59E0B')
-      } finally {
-        setIsOptimizingImages(false)
-      }
+      await processSelectedAssets(result.assets)
     }
+  }
+
+  const handleTakePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync()
+    if (status !== 'granted') {
+      showModal('Permission required', 'Camera permission is required to take a photo.', 'warning', '#EF4444')
+      return
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    })
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      await processSelectedAssets(result.assets)
+    }
+  }
+
+  const pickMedia = () => {
+    Alert.alert(
+      'Add photos',
+      'Choose an option',
+      [
+        {
+          text: 'Take Photo',
+          onPress: () => {
+            void handleTakePhoto()
+          },
+        },
+        {
+          text: 'Choose from Gallery',
+          onPress: () => {
+            void handlePickFromGallery()
+          },
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    )
   }
 
   const handleDeleteMedia = (index: number) => {
@@ -676,6 +849,30 @@ const CreateReport = () => {
             </ScaledText>
             <Ionicons name="location" size={22} color="#4A90E2" />
           </TouchableOpacity>
+
+          <ScaledText baseSize={14} className="mb-1 text-gray-600">Contact Number</ScaledText>
+          <View className="flex-row items-center border rounded-xl px-4 py-4 mb-4 border-gray-300 bg-white">
+            <TextInput
+              placeholder="e.g. 0912 345 6789"
+              value={contactNumber}
+              onChangeText={setContactNumber}
+              keyboardType="phone-pad"
+              className="flex-1 text-black"
+              style={{ paddingVertical: 0, textAlignVertical: 'center' }}
+              placeholderTextColor="#8E8E93"
+            />
+            <TouchableOpacity
+              onPress={handlePickContact}
+              disabled={isLoadingContacts}
+              className="ml-3 items-center justify-center"
+            >
+              {isLoadingContacts ? (
+                <ActivityIndicator size="small" color="#4A90E2" />
+              ) : (
+                <Ionicons name="people-circle-outline" size={26} color="#4A90E2" />
+              )}
+            </TouchableOpacity>
+          </View>
 
           {/* Limit Status Display */}
           {limitStatus && (
@@ -924,6 +1121,96 @@ const CreateReport = () => {
 
       {showLocationPicker && (
         <LocationPicker visible={true} onClose={() => setShowLocationPicker(false)} onLocationSelect={handleLocationSelect} initialLocation={selectedLocation || undefined} />
+      )}
+      
+      {showContactModal && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowContactModal(false)}
+        >
+          <View className="flex-1 justify-end bg-black/50">
+            <View className="bg-white rounded-t-3xl pt-4 px-4 pb-6 max-h-[80%]">
+              <View className="flex-row items-center justify-between mb-3">
+                <ScaledText baseSize={18} className="font-bold text-gray-900">Pick Contact</ScaledText>
+                <TouchableOpacity
+                  onPress={() => setShowContactModal(false)}
+                  className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center"
+                >
+                  <Ionicons name="close" size={18} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+
+              <View className="mb-3">
+                <View className="flex-row items-center rounded-xl border border-gray-300 bg-gray-50 px-3">
+                  <Ionicons name="search" size={18} color="#9CA3AF" />
+                  <TextInput
+                    placeholder="Search contacts"
+                    value={contactSearch}
+                    onChangeText={handleContactSearchChange}
+                    className="flex-1 px-2 py-2 text-base text-black"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
+              </View>
+
+              {isLoadingContacts ? (
+                <View className="py-8 items-center justify-center">
+                  <ActivityIndicator size="small" color="#4A90E2" />
+                  <ScaledText baseSize={14} className="mt-2 text-gray-500">
+                    Loading contacts...
+                  </ScaledText>
+                </View>
+              ) : (
+                <FlatList
+                  data={filteredContacts}
+                  keyExtractor={(_, index) => index.toString()}
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item }) => {
+                    if (!item.phoneNumbers || item.phoneNumbers.length === 0) {
+                      return null
+                    }
+
+                    const mobilePhone =
+                      item.phoneNumbers.find(p => (p.label || '').toLowerCase().includes('mobile')) ||
+                      item.phoneNumbers[0]
+
+                    const rawNumber = mobilePhone.number || ''
+
+                    return (
+                      <TouchableOpacity
+                        onPress={() => {
+                          const formatted = formatContactNumberFromContact(rawNumber)
+                          if (formatted) {
+                            setContactNumber(formatted)
+                          }
+                          setShowContactModal(false)
+                        }}
+                        className="py-3 border-b border-gray-100"
+                      >
+                        <ScaledText baseSize={16} className="text-gray-900">
+                          {item.name || 'Unnamed contact'}
+                        </ScaledText>
+                        <ScaledText baseSize={14} className="text-gray-600 mt-0.5">
+                          {rawNumber}
+                        </ScaledText>
+                      </TouchableOpacity>
+                    )
+                  }}
+                  ListEmptyComponent={
+                    <View className="py-8 items-center justify-center">
+                      <ScaledText baseSize={14} className="text-gray-500">
+                        No contacts with phone numbers found.
+                      </ScaledText>
+                    </View>
+                  }
+                  style={{ maxHeight: 360 }}
+                />
+              )}
+            </View>
+          </View>
+        </Modal>
       )}
       
       {/* Submit Confirmation Modal */}

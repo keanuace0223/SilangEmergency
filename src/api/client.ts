@@ -5,8 +5,9 @@ interface Report {
   incident_type: string;
   incident_datetime: string;
   location: string;
+  contact_number: string;
   urgency_tag?: 'Low' | 'Moderate' | 'High'; // Kept for backward compatibility
-  patient_status: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive';
+  patient_status: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | 'No Patient';
   urgency_level: 'Low' | 'Moderate' | 'High';
   report_type?: 'official' | 'follow-up';
   uploaded_media: string[];
@@ -16,7 +17,8 @@ interface Report {
 interface CreateReportData {
   incidentType: string;
   location: string;
-  patientStatus: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive';
+  contactNumber: string;
+  patientStatus: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | 'No Patient';
   description: string;
   mediaUrls?: string[];
 }
@@ -51,6 +53,7 @@ export const api = {
         user_id: userId.toString(),
         incident_type: reportData.incidentType,
         location: reportData.location,
+        contact_number: reportData.contactNumber,
         patient_status: reportData.patientStatus,
         urgency_level: urgencyLevel,
         description: reportData.description,
@@ -88,7 +91,7 @@ export const api = {
     },
   },
   users: {
-    update: async (id: string | number, updates: { name?: string; barangay_position?: string; profile_pic?: string | null }) => {
+    update: async (id: string | number, updates: { name?: string; barangay_position?: string; profile_pic?: string | null; contact_number?: string }) => {
       const { db } = await import('../lib/supabase');
       const safeUpdates: any = { ...updates };
       if (safeUpdates.profile_pic === null) delete safeUpdates.profile_pic;

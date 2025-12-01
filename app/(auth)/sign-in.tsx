@@ -316,6 +316,7 @@ export default function SignInScreen() {
       email: `${profile.userid || userIDValue}@login.local`,
       barangay: profile.barangay || '',
       barangay_position: profile.barangay_position || '',
+      contact_number: profile.contact_number || null,
       profile_pic: profile.profile_pic || null,
     };
     

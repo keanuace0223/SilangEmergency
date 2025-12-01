@@ -14,6 +14,7 @@ interface User {
   email: string;
   barangay: string;
   barangay_position: string;
+  contact_number?: string;
   profile_pic?: string;
 }
 
@@ -75,6 +76,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: parsedUser.email || parsedUser.userID || `${parsedUser.userID}@login.local`,
           barangay: parsedUser.barangay,
           barangay_position: parsedUser.barangay_position,
+          contact_number: parsedUser.contact_number || undefined,
           profile_pic: parsedUser.profile_pic || undefined
         };
         setUser(mappedUser);

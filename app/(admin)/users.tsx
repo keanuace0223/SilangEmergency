@@ -17,6 +17,7 @@ export default function AdminUsersScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [formUserid, setFormUserid] = useState('');
   const [formName, setFormName] = useState('');
+  const [formContactNumber, setFormContactNumber] = useState('');
   const [formBarangay, setFormBarangay] = useState('');
   const [formPosition, setFormPosition] = useState('');
   const [formPassword, setFormPassword] = useState('');
@@ -46,6 +47,7 @@ export default function AdminUsersScreen() {
   const resetForm = () => {
     setFormUserid('');
     setFormName('');
+    setFormContactNumber('');
     setFormBarangay('');
     setFormPosition('');
     setFormPassword('');
@@ -78,6 +80,7 @@ export default function AdminUsersScreen() {
       await withTimeout(adminApi.createUser({
         userid: formUserid.trim(),
         name: formName.trim(),
+        contact_number: formContactNumber.trim() || undefined,
         barangay: formBarangay.trim(),
         barangay_position: formPosition.trim(),
         password: formPassword,
@@ -224,6 +227,16 @@ export default function AdminUsersScreen() {
             <View className="mb-3">
               <Text className="text-gray-700 mb-1">Full Name</Text>
               <TextInput value={formName} onChangeText={setFormName} placeholder="e.g. Juan Dela Cruz" className="border border-gray-300 rounded-lg px-4 py-3 text-gray-900" />
+            </View>
+            <View className="mb-3">
+              <Text className="text-gray-700 mb-1">Contact Number</Text>
+              <TextInput
+                value={formContactNumber}
+                onChangeText={setFormContactNumber}
+                placeholder="e.g. 0912 345 6789"
+                keyboardType="phone-pad"
+                className="border border-gray-300 rounded-lg px-4 py-3 text-gray-900"
+              />
             </View>
             <View className="mb-3">
               <Text className="text-gray-700 mb-1">Barangay</Text>

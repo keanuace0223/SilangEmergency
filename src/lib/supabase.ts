@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 // Lazy import inside functions to avoid expo web issues
 
+// SQL migration snippet (run in Supabase):
+// ALTER TABLE reports ADD COLUMN IF NOT EXISTS contact_number text;
+// ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_number text;
+
 // Environment variables with fallback
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://bhcecrbyknorjzkjazxu.supabase.co';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoY2VjcmJ5a25vcmp6a2phenh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyMDYwNDMsImV4cCI6MjA3NDc4MjA0M30.Nfv0vHVk1IyN1gz1Y4mdogL9ChsV0DkiMQivuYnolt4';
@@ -75,6 +79,7 @@ export interface User {
   name: string;
   barangay: string;
   barangay_position: string;
+  contact_number?: string;
   profile_pic?: string;
   created_at?: string;
   updated_at?: string;
@@ -85,8 +90,9 @@ export interface Report {
   user_id: string;
   incident_type: string;
   location: string;
+  contact_number: string;
   urgency_tag?: 'Low' | 'Moderate' | 'High'; // Kept for backward compatibility
-  patient_status: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive';
+  patient_status: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | 'No Patient';
   urgency_level: 'Low' | 'Moderate' | 'High';
   report_type?: 'official' | 'follow-up';
   description: string;

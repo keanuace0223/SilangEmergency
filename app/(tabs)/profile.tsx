@@ -19,6 +19,7 @@ const Profile = () => {
   const [refreshing, setRefreshing] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showAboutModal, setShowAboutModal] = useState(false)
   const [showPersonalModal, setShowPersonalModal] = useState(false)
   const [showDeleteAvatarConfirm, setShowDeleteAvatarConfirm] = useState(false)
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null)
@@ -78,6 +79,7 @@ const Profile = () => {
 
   const [editName, setEditName] = useState('')
   const [editBarangay, setEditBarangay] = useState('')
+  const [editContactNumber, setEditContactNumber] = useState('')
   const [editPosition, setEditPosition] = useState<'Barangay Captain' | 'Councilor' | ''>('')
   const [showPositionMenu, setShowPositionMenu] = useState(false)
   const [isSavingPersonal, setIsSavingPersonal] = useState(false)
@@ -244,6 +246,7 @@ const Profile = () => {
                           name: data.name,
                           barangay: data.barangay,
                           barangay_position: data.barangay_position,
+                          contact_number: (data as any).contact_number,
                           profile_pic: data.profile_pic || path,
                         } : null
                         if (nextPersist) {
@@ -366,6 +369,7 @@ const Profile = () => {
             if (!user) return
             setEditName(user.name || '')
             setEditBarangay(user.barangay || '')
+            setEditContactNumber((user as any).contact_number || '')
             setEditPosition((user.barangay_position as any) === 'Barangay Captain' || (user.barangay_position as any) === 'Councilor' ? user.barangay_position as any : '')
             setShowPersonalModal(true)
           }} className="flex-row items-center justify-between py-3">
@@ -398,7 +402,7 @@ const Profile = () => {
         </View>
 
         <View className={`bg-white rounded-xl p-4 shadow-sm`}>
-          <TouchableOpacity className="flex-row items-center justify-between py-3">
+          <TouchableOpacity onPress={() => setShowAboutModal(true)} className="flex-row items-center justify-between py-3">
             <View className="flex-row items-center">
               <View className="w-10 h-10 bg-purple-100 rounded-full items-center justify-center mr-4">
                 <Ionicons name="information-circle-outline" size={18} color="#8B5CF6" />
@@ -499,7 +503,7 @@ const Profile = () => {
             </View>
 
             {/* Additional Settings Placeholder */}
-            <View className="flex-row items-center justify-between py-4">
+            <TouchableOpacity onPress={() => Alert.alert('Coming Soon')} className="flex-row items-center justify-between py-4">
               <View className="flex-row items-center">
                 <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center mr-4">
                   <Ionicons name="notifications-outline" size={20} color="#4A90E2" />
@@ -510,9 +514,9 @@ const Profile = () => {
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-            </View>
+            </TouchableOpacity>
 
-            <View className="flex-row items-center justify-between py-4">
+            <TouchableOpacity onPress={() => Alert.alert('Coming Soon')} className="flex-row items-center justify-between py-4">
               <View className="flex-row items-center">
                 <View className="w-10 h-10 bg-purple-100 rounded-full items-center justify-center mr-4">
                   <Ionicons name="shield-outline" size={20} color="#8B5CF6" />
@@ -523,7 +527,36 @@ const Profile = () => {
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* About Modal */}
+      <Modal
+        visible={showAboutModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowAboutModal(false)}
+      >
+        <View className="flex-1 justify-end bg-black/50">
+          <View className="bg-white rounded-t-3xl p-6">
+            <View className="flex-row items-center justify-between mb-4">
+              <Text className="font-bold text-gray-900" style={{ fontSize: scaleFont(22) }}>About</Text>
+              <TouchableOpacity onPress={() => setShowAboutModal(false)} className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center">
+                <Ionicons name="close" size={20} color="#6B7280" />
+              </TouchableOpacity>
             </View>
+
+            <View className="mb-4">
+              <Text className="text-gray-500 mb-1" style={{ fontSize: scaleFont(13) }}>App Version</Text>
+              <Text className="text-gray-900 font-semibold" style={{ fontSize: scaleFont(16) }}>1.1.0</Text>
+            </View>
+
+            <Text className="text-gray-600" style={{ fontSize: scaleFont(14) }}>
+              Silang Emergency helps barangay officials report and track emergency incidents quickly and
+              consistently. Future updates will include more detailed app information and legal notices.
+            </Text>
           </View>
         </View>
       </Modal>
@@ -562,6 +595,17 @@ const Profile = () => {
                     value={editName} 
                     onChangeText={setEditName} 
                     placeholder="Enter your name" 
+                    className="border rounded-xl px-4 py-4 mb-4 border-gray-300 bg-white text-black" 
+                    placeholderTextColor="#8E8E93" 
+                    style={{ fontSize: scaleFont(16) }} 
+                  />
+
+                  <Text className="mb-1 text-gray-600" style={{ fontSize: scaleFont(13) }}>Mobile Number</Text>
+                  <TextInput 
+                    value={editContactNumber} 
+                    onChangeText={setEditContactNumber} 
+                    placeholder="e.g. 0912 345 6789" 
+                    keyboardType="phone-pad"
                     className="border rounded-xl px-4 py-4 mb-4 border-gray-300 bg-white text-black" 
                     placeholderTextColor="#8E8E93" 
                     style={{ fontSize: scaleFont(16) }} 
@@ -610,6 +654,7 @@ const Profile = () => {
                         const updatedServer = await api.users.update(user.id, {
                           name: editName,
                           barangay_position: editPosition || undefined,
+                          contact_number: editContactNumber.trim() || undefined,
                         })
                         // Mirror to local storage to keep context in sync
                         await AsyncStorage.setItem('userData', JSON.stringify(updatedServer))
