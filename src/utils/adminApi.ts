@@ -515,6 +515,50 @@ class AdminApiService {
     return rows;
   }
 
+  // Delete a single report by id
+  async deleteReport(reportId: string): Promise<{ success: boolean }> {
+    try {
+      const { error } = await supabaseAdmin
+        .from('reports')
+        .delete()
+        .eq('id', reportId);
+
+      if (error) {
+        throw new Error(`Failed to delete report: ${error.message}`);
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting report:', error);
+      throw error;
+    }
+  }
+
+  // Forcefully log out a user from all sessions
+  async logoutUser(userId: string): Promise<{ success: boolean }> {
+    try {
+      const { error: signOutError } = await supabaseAdmin.auth.admin.signOut(userId);
+
+      if (signOutError) {
+        throw new Error(`Failed to sign out user: ${signOutError.message}`);
+      }
+
+      const { error: sessionsError } = await supabaseAdmin
+        .from('user_sessions')
+        .delete()
+        .eq('user_id', userId);
+
+      if (sessionsError) {
+        throw new Error(`Failed to clear user sessions: ${sessionsError.message}`);
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error logging out user:', error);
+      throw error;
+    }
+  }
+
   // Reset user report limit by moving their recent reports' created_at timestamps to 2 hours ago
   async resetUserReportLimit(userId: string): Promise<{ success: boolean; count: number }> {
     try {

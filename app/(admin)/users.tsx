@@ -122,6 +122,52 @@ export default function AdminUsersScreen() {
     }
   };
 
+  const handleForceLogout = (user: AdminUser) => {
+    Alert.alert(
+      'Force logout user?',
+      `Are you sure you want to force logout ${user.name || user.userid}? This will end all active sessions.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Force Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await adminApi.logoutUser(user.id);
+              Alert.alert('Success', 'User has been logged out from all active sessions.');
+              await load();
+            } catch (error: any) {
+              Alert.alert('Error', error?.message || 'Failed to force logout user. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteUser = (user: AdminUser) => {
+    Alert.alert(
+      'Delete user?',
+      `This action is irreversible. Are you sure you want to permanently delete ${user.name || user.userid}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await adminApi.deleteUser(user.id);
+              Alert.alert('Success', result?.message || 'User deleted successfully.');
+              await load();
+            } catch (error: any) {
+              Alert.alert('Error', error?.message || 'Failed to delete user. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top','bottom']}>
       <View className="bg-white px-6 py-4 border-b border-gray-100">
@@ -165,7 +211,7 @@ export default function AdminUsersScreen() {
                       <Text className="text-xs text-gray-500 mt-1">Reports: {(item as any).reportCount}</Text>
                     ) : null}
                   </View>
-                  <View className="flex-row gap-2">
+                  <View className="flex-row gap-2 items-center">
                     <TouchableOpacity onPress={() => setConfirmUser(item)} className="px-3 py-2 rounded-lg bg-gray-500 flex-row items-center">
                       <Ionicons name="refresh" size={16} color="#fff" />
                       <Text className="text-white font-semibold ml-2">Reset Limit</Text>
@@ -173,6 +219,18 @@ export default function AdminUsersScreen() {
                     <TouchableOpacity onPress={() => router.push({ pathname: '/(admin)/user-reports', params: { userId: item.id } })} className="px-3 py-2 rounded-lg bg-[#4A90E2] flex-row items-center">
                       <Ionicons name="document-text" size={16} color="#fff" />
                       <Text className="text-white font-semibold ml-2">View Reports</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleForceLogout(item)}
+                      className="w-9 h-9 rounded-full bg-orange-50 items-center justify-center border border-orange-200"
+                    >
+                      <Ionicons name="log-out-outline" size={18} color="#EA580C" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteUser(item)}
+                      className="w-9 h-9 rounded-full bg-red-50 items-center justify-center border border-red-200"
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#DC2626" />
                     </TouchableOpacity>
                   </View>
                 </View>

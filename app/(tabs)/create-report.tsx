@@ -207,7 +207,17 @@ const CreateReport = () => {
       showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
       return
     }
-    if (!noPatientTypes.includes(incidentType) && incidentType !== 'Vehicular Accident' && incidentType !== 'Others' && !urgency) {
+
+    if (incidentType === 'Others') {
+      if (hasPatient && !patientStatus) {
+        showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
+        return
+      }
+      if (!hasPatient && !urgency) {
+        showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
+        return
+      }
+    } else if (!noPatientTypes.includes(incidentType) && incidentType !== 'Vehicular Accident' && !urgency) {
       showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
       return
     }
@@ -242,7 +252,17 @@ const CreateReport = () => {
       showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
       return
     }
-    if (!noPatientTypes.includes(incidentType) && incidentType !== 'Vehicular Accident' && incidentType !== 'Others' && !urgency) {
+
+    if (incidentType === 'Others') {
+      if (hasPatient && !patientStatus) {
+        showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
+        return
+      }
+      if (!hasPatient && !urgency) {
+        showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
+        return
+      }
+    } else if (!noPatientTypes.includes(incidentType) && incidentType !== 'Vehicular Accident' && !urgency) {
       showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
       return
     }
@@ -306,9 +326,20 @@ const CreateReport = () => {
         }
       } else {
         // For other incident types, use urgency level directly
-        urgencyLevel = urgency as 'Low' | 'Moderate' | 'High'
-        // Store urgency as patient_status for backward compatibility
-        finalPatientStatus = urgency
+        const effectiveUrgency = (urgency || 'Low') as 'Low' | 'Moderate' | 'High'
+        urgencyLevel = effectiveUrgency
+
+        if (incidentType === 'Others') {
+          // For 'Others', prefer AVPU when patient is involved
+          if (hasPatient && patientStatus) {
+            finalPatientStatus = patientStatus
+          } else {
+            finalPatientStatus = effectiveUrgency
+          }
+        } else {
+          // Store urgency as patient_status for backward compatibility
+          finalPatientStatus = effectiveUrgency
+        }
       }
 
       const reportData = {
@@ -833,6 +864,7 @@ const CreateReport = () => {
                     setPatientStatus('')
                     setUrgency('')
                     setOthersSpecification('')
+                    setHasPatient(false)
                   }}>
                     <Ionicons name={opt.icon} size={20} color={opt.color} />
                     <ScaledText baseSize={16} className="ml-3 text-black">{opt.type}</ScaledText>
@@ -921,7 +953,7 @@ const CreateReport = () => {
                 </View>
               </View>
             </>
-          ) : incidentType === 'Fire' || incidentType === 'Flood' || incidentType === 'Earthquake' || incidentType === 'Electrical' ? (
+          ) : incidentType === 'Fire' || incidentType === 'Flood' || incidentType === 'Earthquake' || incidentType === 'Electrical' || incidentType === 'Others' ? (
             <>
               <TouchableOpacity 
                 onPress={() => setHasPatient(!hasPatient)}
@@ -949,6 +981,24 @@ const CreateReport = () => {
                           opt={opt} 
                           isSelected={patientStatus === opt.status}
                           onPress={() => setPatientStatus(opt.status)}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                </>
+              )}
+
+              {incidentType === 'Others' && (
+                <>
+                  <ScaledText baseSize={14} className="mb-1 text-gray-600">Urgency Level</ScaledText>
+                  <View className="mb-4">
+                    <View className="flex-row gap-2 mb-2">
+                      {urgencyOptions.map(opt => (
+                        <UrgencyButton 
+                          key={opt.level} 
+                          opt={opt} 
+                          isSelected={urgency === opt.level}
+                          onPress={() => setUrgency(opt.level)}
                         />
                       ))}
                     </View>

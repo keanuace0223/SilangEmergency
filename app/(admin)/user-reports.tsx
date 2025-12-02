@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ScaledText from '../../components/ScaledText';
 import { adminApi } from '../../src/utils/adminApi';
@@ -125,6 +125,27 @@ export default function AdminUserReportsScreen() {
     if (s.includes('-')) return s.replace(/-/g, '').slice(0, 4).toUpperCase();
     return s.slice(0, 4).toUpperCase();
   };
+  const handleDeleteReport = (report: any) => {
+    Alert.alert(
+      'Delete report?',
+      'Delete this report permanently?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await adminApi.deleteReport(String(report.id));
+              setReports(prev => prev.filter(r => r.id !== report.id));
+            } catch (error: any) {
+              Alert.alert('Error', error?.message || 'Failed to delete report. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
   const renderReportItem = ({ item }: { item: any }) => {
     // Only show status tag for Vehicular Accident and Others incident types
     const shouldShowStatus = item.incident_type === 'Vehicular Accident' || item.incident_type === 'Others';
@@ -139,14 +160,22 @@ export default function AdminUserReportsScreen() {
           <View className="flex-1">
             <View className="flex-row items-center justify-between">
               <Text className="text-base font-bold text-gray-900" numberOfLines={1}>{item.incident_type}</Text>
-              {statusInfo && (
-                <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
-                  <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
-                  <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
-                    {statusInfo.text}
-                  </Text>
-                </View>
-              )}
+              <View className="flex-row items-center">
+                {statusInfo && (
+                  <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
+                    <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
+                    <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
+                      {statusInfo.text}
+                    </Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  onPress={() => handleDeleteReport(item)}
+                  className="ml-2 w-8 h-8 rounded-full bg-red-50 items-center justify-center border border-red-200"
+                >
+                  <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                </TouchableOpacity>
+              </View>
             </View>
           {item.description ? (
             <Text className="text-gray-600 text-xs mt-1" numberOfLines={2}>{item.description}</Text>
