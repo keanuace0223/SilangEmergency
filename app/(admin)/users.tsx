@@ -1,11 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppModal from '../../components/AppModal';
 import ScaledText from '../../components/ScaledText';
 import { adminApi, type AdminUser } from '../../src/utils/adminApi';
+
+type ModalAction = {
+  label: string;
+  onPress?: () => void;
+  variant?: 'primary' | 'secondary' | 'danger';
+  disabled?: boolean;
+};
 
 export default function AdminUsersScreen() {
   const router = useRouter();
@@ -29,6 +36,19 @@ export default function AdminUsersScreen() {
   const [confirmUser, setConfirmUser] = useState<AdminUser | null>(null);
   const [isResettingLimit, setIsResettingLimit] = useState(false);
 
+  const [messageModalVisible, setMessageModalVisible] = useState(false);
+  const [messageModalTitle, setMessageModalTitle] = useState('');
+  const [messageModalMessage, setMessageModalMessage] = useState('');
+  const [messageModalIcon, setMessageModalIcon] = useState<keyof typeof Ionicons.glyphMap>('information-circle');
+  const [messageModalIconColor, setMessageModalIconColor] = useState('#2563EB');
+  const [messageModalActions, setMessageModalActions] = useState<ModalAction[]>([
+    {
+      label: 'OK',
+      onPress: () => setMessageModalVisible(false),
+      variant: 'primary',
+    },
+  ]);
+
   const adminUserIds = useMemo(() => ['admin1','admin2','admin3'], []);
 
   const load = useCallback(async () => {
@@ -41,6 +61,31 @@ export default function AdminUsersScreen() {
       setLoading(false);
     }
   }, [adminUserIds, search]);
+
+  const showMessageModal = (
+    title: string,
+    message: string,
+    icon: keyof typeof Ionicons.glyphMap,
+    color: string,
+    actions?: ModalAction[],
+  ) => {
+    setMessageModalTitle(title);
+    setMessageModalMessage(message);
+    setMessageModalIcon(icon);
+    setMessageModalIconColor(color);
+    setMessageModalActions(
+      actions && actions.length > 0
+        ? actions
+        : [
+            {
+              label: 'OK',
+              onPress: () => setMessageModalVisible(false),
+              variant: 'primary',
+            },
+          ],
+    );
+    setMessageModalVisible(true);
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -104,18 +149,22 @@ export default function AdminUsersScreen() {
       const result = await adminApi.resetUserReportLimit(confirmUser.id);
       
       if (result.success) {
-        Alert.alert(
+        setConfirmUser(null);
+        showMessageModal(
           'Success',
           `Report limit reset successfully. ${result.count} report${result.count !== 1 ? 's' : ''} moved outside the hourly window.`,
-          [{ text: 'OK', onPress: () => setConfirmUser(null) }]
+          'checkmark-circle',
+          '#10B981',
         );
       } else {
-        Alert.alert('Error', 'Failed to reset report limit. Please try again.');
+        showMessageModal('Error', 'Failed to reset report limit. Please try again.', 'warning', '#EF4444');
       }
     } catch (error: any) {
-      Alert.alert(
+      showMessageModal(
         'Error',
-        error?.message || 'Failed to reset report limit. Please try again.'
+        error?.message || 'Failed to reset report limit. Please try again.',
+        'warning',
+        '#EF4444',
       );
     } finally {
       setIsResettingLimit(false);
@@ -123,48 +172,82 @@ export default function AdminUsersScreen() {
   };
 
   const handleForceLogout = (user: AdminUser) => {
-    Alert.alert(
+    showMessageModal(
       'Force logout user?',
       `Are you sure you want to force logout ${user.name || user.userid}? This will end all active sessions.`,
+      'alert-circle',
+      '#F97316',
       [
-        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Force Logout',
-          style: 'destructive',
+          label: 'Cancel',
+          variant: 'secondary',
+          onPress: () => setMessageModalVisible(false),
+        },
+        {
+          label: 'Force Logout',
+          variant: 'danger',
           onPress: async () => {
+            setMessageModalVisible(false);
             try {
               await adminApi.logoutUser(user.id);
-              Alert.alert('Success', 'User has been logged out from all active sessions.');
+              showMessageModal(
+                'Success',
+                'User has been logged out from all active sessions.',
+                'checkmark-circle',
+                '#10B981',
+              );
               await load();
             } catch (error: any) {
-              Alert.alert('Error', error?.message || 'Failed to force logout user. Please try again.');
+              showMessageModal(
+                'Error',
+                error?.message || 'Failed to force logout user. Please try again.',
+                'warning',
+                '#EF4444',
+              );
             }
           },
         },
-      ]
+      ],
     );
   };
 
   const handleDeleteUser = (user: AdminUser) => {
-    Alert.alert(
+    showMessageModal(
       'Delete user?',
       `This action is irreversible. Are you sure you want to permanently delete ${user.name || user.userid}?`,
+      'alert-circle',
+      '#EF4444',
       [
-        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
-          style: 'destructive',
+          label: 'Cancel',
+          variant: 'secondary',
+          onPress: () => setMessageModalVisible(false),
+        },
+        {
+          label: 'Delete',
+          variant: 'danger',
           onPress: async () => {
+            setMessageModalVisible(false);
             try {
               const result = await adminApi.deleteUser(user.id);
-              Alert.alert('Success', result?.message || 'User deleted successfully.');
+              showMessageModal(
+                'Success',
+                result?.message || 'User deleted successfully.',
+                'checkmark-circle',
+                '#10B981',
+              );
               await load();
             } catch (error: any) {
-              Alert.alert('Error', error?.message || 'Failed to delete user. Please try again.');
+              showMessageModal(
+                'Error',
+                error?.message || 'Failed to delete user. Please try again.',
+                'warning',
+                '#EF4444',
+              );
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -261,6 +344,17 @@ export default function AdminUsersScreen() {
             disabled: isResettingLimit
           }
         ]}
+      />
+
+      {/* Generic message/confirmation modal */}
+      <AppModal
+        visible={messageModalVisible}
+        onClose={() => setMessageModalVisible(false)}
+        icon={messageModalIcon}
+        iconColor={messageModalIconColor}
+        title={messageModalTitle}
+        message={messageModalMessage}
+        actions={messageModalActions}
       />
 
       {/* Add User Modal */}

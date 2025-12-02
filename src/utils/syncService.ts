@@ -147,12 +147,9 @@ class SyncService {
           }
 
           // Create report data for API
-          // Map patient_status if available, otherwise fallback to urgency_tag
-          const patientStatus: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | 'No Patient' = 
-            (report.patient_status as any) || 
-            (report.urgency_tag === 'Low' ? 'Alert' :
-             report.urgency_tag === 'Moderate' ? 'Voice' :
-             report.urgency_tag === 'High' ? 'Pain' : 'Alert');
+          // Use stored patient_status; default to 'Alert' if missing
+          const patientStatus: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | 'No Patient' =
+            (report.patient_status as any) || 'Alert';
 
           const reportData = {
             incidentType: report.incident_type as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical',

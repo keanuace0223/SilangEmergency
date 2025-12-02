@@ -33,7 +33,6 @@ const Reports = () => {
   const [reports, setReports] = React.useState<any[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
   const [refreshing, setRefreshing] = React.useState(false)
-  const [activeFilter, setActiveFilter] = React.useState<'All' | 'High' | 'Medium' | 'Low'>('All')
 
   const [modalVisible, setModalVisible] = React.useState(false)
   const [modalTitle, setModalTitle] = React.useState('')
@@ -72,16 +71,6 @@ const Reports = () => {
       'Electrical': '#F59E0B'
     }
     return colorMap[type] || '#3B82F6'
-  }
-
-  // Urgency color mapping
-  const getUrgencyColor = (urgency: string) => {
-    const colorMap: { [key: string]: string } = {
-      'Low': '#10B981', // green
-      'Moderate': '#F59E0B', // yellow
-      'High': '#EF4444' // red
-    }
-    return colorMap[urgency] || '#6B7280'
   }
 
   // Helper function to get AVPU display info
@@ -253,27 +242,6 @@ const Reports = () => {
     setSelectedImageIndex(0)
   }
 
-  // Filter reports based on active filter
-  const getFilteredReports = () => {
-    if (activeFilter === 'All') {
-      return reports
-    }
-    const filterMap: { [key: string]: string } = {
-      'High': 'High',
-      'Medium': 'Moderate', 
-      'Low': 'Low'
-    }
-    return reports.filter(report => {
-      const urgency = report.urgency_level || report.urgency_tag || 'Low';
-      return urgency === filterMap[activeFilter];
-    })
-  }
-
-  // Handle filter change
-  const handleFilterChange = (filter: 'All' | 'High' | 'Medium' | 'Low') => {
-    setActiveFilter(filter)
-  }
-
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp)
     return date.toLocaleString('en-US', {
@@ -310,55 +278,133 @@ const Reports = () => {
   const renderReportItem = ({ item }: { item: any }) => {
     const syncInfo = getSyncStatusInfo(item)
     // Only show status tag for Vehicular Accident and Others incident types
-    const shouldShowStatus = item.incident_type === 'Vehicular Accident' || item.incident_type === 'Others';
-    const statusInfo = shouldShowStatus ? getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low') : null;
+    const statusInfo = getPatientStatusInfo(item.patient_status || 'No Patient');
     
     return (
-      <TouchableOpacity onPress={() => handleReportPress(item)} activeOpacity={0.8} className="mx-6">
-        <View className={`bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-lg`} style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 12 }}>
-          <View className={`px-6 py-5 bg-gradient-to-r from-blue-50 to-indigo-50`}>
-            <View className="flex-row items-center justify-between">
+      <TouchableOpacity
+        onPress={() => handleReportPress(item)}
+        activeOpacity={0.85}
+        className="mx-4"
+      >
+        <View
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm"
+          style={{
+            borderLeftWidth: 4,
+            borderLeftColor: getIncidentColor(item.incident_type),
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.08,
+            shadowRadius: 3,
+            elevation: 2,
+          }}
+        >
+          <View className="px-4 py-3">
+            {/* Top row: icon, title, timestamp */}
+            <View className="flex-row items-start justify-between">
               <View className="flex-row items-center flex-1">
-                <View className={`w-12 h-12 rounded-xl bg-white items-center justify-center mr-4 shadow-sm`} style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 3 }}>
-                  <Ionicons name={getIncidentIcon(item.incident_type) as any} size={24} color={getIncidentColor(item.incident_type)} />
+                <View
+                  className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                  style={{
+                    backgroundColor: getIncidentColor(item.incident_type) + '1A',
+                  }}
+                >
+                  <Ionicons
+                    name={getIncidentIcon(item.incident_type) as any}
+                    size={20}
+                    color={getIncidentColor(item.incident_type)}
+                  />
                 </View>
                 <View className="flex-1">
-                  <View className="flex-row items-center mb-1">
-                    <Subtitle style={{ color: '#111827', fontWeight: '700' }}>{item.incident_type}</Subtitle>
-                    {item.isOffline && (
-                      <View className="ml-2 px-2 py-1 rounded-full" style={{ backgroundColor: '#F3F4F6' }}>
-                        <Caption className="font-medium" style={{ color: '#6B7280', fontSize: 10 }}>OFFLINE</Caption>
-                      </View>
-                    )}
-                  </View>
-                  <View className="flex-row items-center">
-                    <Ionicons name="location" size={14} color="#4B5563" />
-                    <Body className={`ml-1 font-medium`} style={{ color: '#4B5563' }}>{item.location}</Body>
-                  </View>
+                  <Subtitle
+                    className="text-lg font-bold"
+                    style={{ color: '#111827' }}
+                    numberOfLines={1}
+                  >
+                    {item.incident_type}
+                  </Subtitle>
+                  {item.isOffline && (
+                    <View className="mt-1 self-start px-2 py-0.5 rounded-full bg-gray-100">
+                      <Caption
+                        className="font-medium"
+                        style={{ color: '#6B7280', fontSize: 10 }}
+                      >
+                        OFFLINE
+                      </Caption>
+                    </View>
+                  )}
                 </View>
               </View>
+              <Caption
+                className="text-xs"
+                style={{ color: '#9CA3AF', marginLeft: 8 }}
+              >
+                {formatTimestamp(item.incident_datetime)}
+              </Caption>
+            </View>
+
+            {/* Middle row: description */}
+            {item.description ? (
+              <Body
+                className="mt-2 text-sm"
+                style={{ color: '#4B5563' }}
+                numberOfLines={2}
+              >
+                {item.description}
+              </Body>
+            ) : null}
+
+            {/* Bottom row: status badge, location, sync */}
+            <View className="mt-3 flex-row items-center justify-between">
               {statusInfo && (
-                <View className="px-2.5 py-1.5 rounded-full shadow-sm flex-row items-center" style={{ backgroundColor: statusInfo.color, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
-                  <Ionicons name={statusInfo.icon as any} size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
-                  <Caption className="font-bold tracking-wide" style={{ color: '#FFFFFF' }}>
+                <View
+                  className="flex-row items-center px-2.5 py-1 rounded-full"
+                  style={{
+                    backgroundColor: statusInfo.color + '1A',
+                  }}
+                >
+                  <Ionicons
+                    name={statusInfo.icon as any}
+                    size={11}
+                    color={statusInfo.color}
+                    style={{ marginRight: 4 }}
+                  />
+                  <Caption
+                    className="font-semibold"
+                    style={{ color: statusInfo.color, fontSize: 10 }}
+                  >
                     {statusInfo.text}
                   </Caption>
                 </View>
               )}
-            </View>
-          </View>
 
-          <View className="px-6 py-5">
-            <Body className={`leading-6 mb-4`} style={{ color: '#374151' }} numberOfLines={2}>{item.description}</Body>
-            <View className={`flex-row items-center justify-between pt-3 border-t border-gray-100`}>
-              <View className="flex-row items-center">
-                <View className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: syncInfo.color }} />
-                <Caption className={`font-medium`} style={{ color: '#6B7280' }}>{syncInfo.text}</Caption>
-                {item.sync_status === 'syncing' && (
-                  <ActivityIndicator size="small" color={syncInfo.color} style={{ marginLeft: 8 }} />
-                )}
+              <View className="flex-1 flex-row items-center mx-3">
+                <Ionicons name="location" size={12} color="#6B7280" />
+                <Caption
+                  numberOfLines={1}
+                  style={{
+                    color: '#6B7280',
+                    fontSize: 11,
+                    marginLeft: 4,
+                  }}
+                >
+                  {item.location}
+                </Caption>
               </View>
-              <Caption className={`font-medium`} style={{ color: '#9CA3AF' }}>{formatTimestamp(item.incident_datetime)}</Caption>
+
+              <View className="flex-row items-center">
+                {item.sync_status === 'syncing' && (
+                  <ActivityIndicator
+                    size="small"
+                    color={syncInfo.color}
+                    style={{ marginRight: 6 }}
+                  />
+                )}
+                <Ionicons
+                  name={syncInfo.icon as any}
+                  size={14}
+                  color={syncInfo.color}
+                />
+              </View>
             </View>
           </View>
         </View>
@@ -377,8 +423,7 @@ const Reports = () => {
               <View>
                 <Title style={{ marginBottom: s(4) }}>Reports</Title>
                 <Subtitle style={{ color: '#4B5563' }}>
-                  {getFilteredReports().length} of {reports.length} {reports.length === 1 ? 'report' : 'reports'}
-                  {activeFilter !== 'All' && ` (${activeFilter} priority)`}
+                  {reports.length} {reports.length === 1 ? 'report' : 'reports'}
                 </Subtitle>
               </View>
             </View>
@@ -429,56 +474,12 @@ const Reports = () => {
           }}
         />
 
-        {/* Filter Buttons (responsive, horizontal chips) */}
-        <View className={`bg-white px-6 py-5 border-b border-gray-100`} style={{ paddingHorizontal: s(24), paddingVertical: s(20) }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-            {(['All', 'High', 'Medium', 'Low'] as const).map((filter, idx) => {
-              const isActive = activeFilter === filter
-              const bg = isActive 
-                ? (filter === 'High' ? '#EF4444' : filter === 'Medium' ? '#F59E0B' : filter === 'Low' ? '#10B981' : '#4A90E2')
-                : 'transparent'
-              const border = isActive ? bg : '#D1D5DB'
-              const textColor = isActive ? '#FFFFFF' : '#374151'
-              const displayLabel = filter === 'Medium' ? 'Med' : filter
-              const chipHeight = Math.max(32, Math.round(36 * Math.min(textScale, 1.2)))
-              const chipPaddingH = Math.round(10 * Math.min(textScale, 1.1))
-              const labelBase = width < 340 ? 10 : (width < 380 ? 11 : 12)
-              return (
-                <TouchableOpacity
-                  key={filter}
-                  onPress={() => handleFilterChange(filter)}
-                  activeOpacity={0.85}
-                  style={{
-                    flexGrow: 1,
-                    flexBasis: 0,
-                    minWidth: 0,
-                    height: chipHeight,
-                    paddingHorizontal: chipPaddingH,
-                    borderRadius: 9999,
-                    borderWidth: 1,
-                    borderColor: border,
-                    backgroundColor: bg,
-                    marginRight: idx === 3 ? 0 : s(8),
-                    marginBottom: 0,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <ScaledText baseSize={labelBase} style={{ fontWeight: '700', color: textColor }} numberOfLines={1} ellipsizeMode="tail">
-                    {displayLabel}
-                  </ScaledText>
-                </TouchableOpacity>
-              )
-            })}
-          </View>
-        </View>
-
         {/* Reports List */}
         {isLoading ? (
           <View className={`flex-1 items-center justify-center bg-gray-50`}>
             <Text className={`text-lg text-gray-500`}>Loading your reports...</Text>
           </View>
-        ) : getFilteredReports().length === 0 ? (
+        ) : reports.length === 0 ? (
           <ScrollView
             className={`flex-1 bg-gray-50`}
             contentContainerStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: s(32) }}
@@ -498,19 +499,19 @@ const Reports = () => {
                 <Ionicons name="document-outline" size={40} color="#4A90E2" />
               </View>
               <ScaledText baseSize={20} className={`font-bold mb-3 text-center text-gray-900`}>
-                {reports.length === 0 ? 'No Reports Yet' : `No ${activeFilter} Reports`}
+                {reports.length === 0 ? 'No Reports Yet' : 'No Reports'}
               </ScaledText>
               <ScaledText baseSize={16} className={`text-center leading-6 px-2 text-gray-500`}>
                 {reports.length === 0 
                   ? 'Tap the + button below to create your first emergency report'
-                  : `Try selecting a different filter or create a new report`}
+                  : 'Create a new report'}
               </ScaledText>
             </View>
           </ScrollView>
         ) : (
           <View className={`flex-1 bg-gray-50`}>
             <FlatList
-              data={getFilteredReports()}
+              data={reports}
               renderItem={renderReportItem}
               keyExtractor={(item) => item.id.toString()}
               contentContainerStyle={{ paddingTop: s(24), paddingBottom: insets.bottom + s(120), paddingHorizontal: 0 }}
@@ -592,18 +593,41 @@ const Reports = () => {
           {selectedReport && (
             <ScrollView className="flex-1" contentContainerStyle={{ padding: 20 }}>
               <View className="flex-row items-center mb-6">
-                <View className={`w-16 h-16 rounded-full items-center justify-center mr-4 shadow-sm bg-blue-50`}>
-                  <Ionicons name={getIncidentIcon(selectedReport.incident_type) as any} size={32} color="#4A90E2" />
+                <View
+                  className={`w-16 h-16 rounded-full items-center justify-center mr-4 shadow-sm`}
+                  style={{ backgroundColor: getIncidentColor(selectedReport.incident_type) + '1A' }}
+                >
+                  <Ionicons
+                    name={getIncidentIcon(selectedReport.incident_type) as any}
+                    size={32}
+                    color={getIncidentColor(selectedReport.incident_type)}
+                  />
                 </View>
                 <View className="flex-1">
                   <ScaledText baseSize={22} className={`font-bold mb-1 text-gray-900`}>{selectedReport.incident_type}</ScaledText>
-                  {(selectedReport.incident_type === 'Vehicular Accident' || selectedReport.incident_type === 'Others') && (
-                    <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_level || selectedReport.urgency_tag || 'Low') + 'E6' }}>
-                      <ScaledText baseSize={14} className="font-semibold" style={{ color: '#FFFFFF' }}>
-                        {selectedReport.patient_status ? String(selectedReport.patient_status).toUpperCase() : String(selectedReport.urgency_tag || 'Low').toUpperCase()}
-                      </ScaledText>
-                    </View>
-                  )}
+                  {(() => {
+                    const statusInfo = getPatientStatusInfo(selectedReport.patient_status || 'No Patient');
+                    return (
+                      <View
+                        className="px-3 py-1 rounded-full self-start flex-row items-center"
+                        style={{ backgroundColor: statusInfo.color + '1A' }}
+                      >
+                        <Ionicons
+                          name={statusInfo.icon as any}
+                          size={14}
+                          color={statusInfo.color}
+                          style={{ marginRight: 6 }}
+                        />
+                        <ScaledText
+                          baseSize={14}
+                          className="font-semibold"
+                          style={{ color: statusInfo.color }}
+                        >
+                          {statusInfo.text}
+                        </ScaledText>
+                      </View>
+                    );
+                  })()}
                 </View>
               </View>
 
@@ -646,6 +670,12 @@ const Reports = () => {
                     <ScaledText baseSize={14} className={'text-gray-600'}>Submitted:</ScaledText>
                     <ScaledText baseSize={16} className={`font-medium text-gray-900`}>
                       {new Date(selectedReport.incident_datetime).toLocaleDateString()} at {new Date(selectedReport.incident_datetime).toLocaleTimeString()}
+                    </ScaledText>
+                  </View>
+                  <View className="flex-row justify-between">
+                    <ScaledText baseSize={14} className={'text-gray-600'}>Patient Status (AVPU):</ScaledText>
+                    <ScaledText baseSize={16} className={`font-medium text-gray-900`}>
+                      {getPatientStatusInfo(selectedReport.patient_status || 'No Patient').text}
                     </ScaledText>
                   </View>
                   <View className="flex-row justify-between">

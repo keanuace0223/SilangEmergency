@@ -6,9 +6,7 @@ interface Report {
   incident_datetime: string;
   location: string;
   contact_number: string;
-  urgency_tag?: 'Low' | 'Moderate' | 'High'; // Kept for backward compatibility
   patient_status: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | 'No Patient';
-  urgency_level: 'Low' | 'Moderate' | 'High';
   report_type?: 'official' | 'follow-up';
   uploaded_media: string[];
   description: string;
@@ -42,20 +40,13 @@ export const api = {
 
     create: async (reportData: CreateReportData, userId: string | number): Promise<Report> => {
       const { db } = await import('../lib/supabase');
-      
-      // Map patientStatus to urgency_level
-      const urgencyLevel: 'Low' | 'Moderate' | 'High' = 
-        reportData.patientStatus === 'Alert' ? 'Low' :
-        reportData.patientStatus === 'Voice' ? 'Moderate' :
-        reportData.patientStatus === 'Pain' || reportData.patientStatus === 'Unresponsive' ? 'High' : 'Low';
-      
+
       const { data, error } = await db.createReport({
         user_id: userId.toString(),
         incident_type: reportData.incidentType,
         location: reportData.location,
         contact_number: reportData.contactNumber,
         patient_status: reportData.patientStatus,
-        urgency_level: urgencyLevel,
         description: reportData.description,
         uploaded_media: reportData.mediaUrls || [],
         incident_datetime: new Date().toISOString()

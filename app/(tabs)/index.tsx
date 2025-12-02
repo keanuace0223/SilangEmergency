@@ -142,17 +142,7 @@ const Home = () => {
     return map
   }, [reports])
 
-  const countsByUrgency = React.useMemo(() => {
-    const map: Record<string, number> = { Low: 0, Moderate: 0, High: 0 }
-    for (const r of reports) {
-      const key = r.urgency_level || r.urgency_tag || 'Low'
-      map[key] = (map[key] || 0) + 1
-    }
-    return map
-  }, [reports])
-
   const incidentEntries = React.useMemo(() => Object.entries(countsByIncident), [countsByIncident])
-  const urgencyEntries = React.useMemo(() => Object.entries(countsByUrgency), [countsByUrgency])
 
   // Match icon and color logic from reports screen
   const getIncidentIcon = (type: string): any => {
@@ -175,15 +165,6 @@ const Home = () => {
       'Electrical': '#F59E0B'
     }
     return colorMap[type] || '#3B82F6'
-  }
-
-  const getUrgencyColor = (urgency: string) => {
-    const colorMap: { [key: string]: string } = {
-      'Low': '#10B981',
-      'Moderate': '#F59E0B',
-      'High': '#EF4444'
-    }
-    return colorMap[urgency] || '#6B7280'
   }
 
   // Helper function to get AVPU display info
@@ -231,39 +212,139 @@ const Home = () => {
   }
 
   const renderReportItem = ({ item }: { item: any }) => {
-    // Only show status tag for Vehicular Accident and Others incident types
-    const shouldShowStatus = item.incident_type === 'Vehicular Accident' || item.incident_type === 'Others';
-    const statusInfo = shouldShowStatus ? getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low') : null;
-    
+    const statusInfo = getPatientStatusInfo(item.patient_status || 'No Patient')
+    const timestampLabel = new Date(item.incident_datetime).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    })
+
     return (
-      <TouchableOpacity activeOpacity={0.9} className="bg-white rounded-2xl border border-gray-100 p-4" onPress={() => { setSelectedReport(item); setShowDetail(true) }}>
-        <View className="flex-row">
-          <View className="w-12 h-12 rounded-xl bg-white items-center justify-center mr-4 shadow-sm" style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 3 }}>
-            <Ionicons name={getIncidentIcon(item.incident_type)} size={24} color={getIncidentColor(item.incident_type)} />
-          </View>
-          <View className="flex-1">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-base font-bold text-gray-900" numberOfLines={1}>{item.incident_type}</Text>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => {
+          setSelectedReport(item)
+          setShowDetail(true)
+        }}
+        className="mx-1"
+      >
+        <View
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm"
+          style={{
+            borderLeftWidth: 4,
+            borderLeftColor: getIncidentColor(item.incident_type),
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.08,
+            shadowRadius: 3,
+            elevation: 2,
+          }}
+        >
+          <View className="px-4 py-3">
+            <View className="flex-row items-start justify-between">
+              <View className="flex-row items-center flex-1">
+                <View
+                  className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                  style={{
+                    backgroundColor: getIncidentColor(item.incident_type) + '1A',
+                  }}
+                >
+                  <Ionicons
+                    name={getIncidentIcon(item.incident_type)}
+                    size={20}
+                    color={getIncidentColor(item.incident_type)}
+                  />
+                </View>
+                <View className="flex-1">
+                  <Text
+                    className="text-lg font-bold text-gray-900"
+                    numberOfLines={1}
+                  >
+                    {item.incident_type}
+                  </Text>
+                  {item.isOffline && (
+                    <View className="mt-1 self-start px-2 py-0.5 rounded-full bg-gray-100">
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          color: '#6B7280',
+                          fontWeight: '500',
+                        }}
+                      >
+                        OFFLINE
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+              <Text
+                className="text-xs text-gray-400 ml-2"
+                numberOfLines={1}
+              >
+                {timestampLabel}
+              </Text>
+            </View>
+
+            {item.description ? (
+              <Text
+                className="mt-2 text-sm text-gray-600"
+                numberOfLines={2}
+              >
+                {item.description}
+              </Text>
+            ) : null}
+
+            <View className="mt-3 flex-row items-center justify-between">
               {statusInfo && (
-                <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
-                  <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
-                  <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
+                <View
+                  className="flex-row items-center px-2.5 py-1 rounded-full"
+                  style={{
+                    backgroundColor: statusInfo.color + '1A',
+                  }}
+                >
+                  <Ionicons
+                    name={statusInfo.icon as any}
+                    size={11}
+                    color={statusInfo.color}
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '600',
+                      color: statusInfo.color,
+                    }}
+                  >
                     {statusInfo.text}
                   </Text>
                 </View>
               )}
+
+              <View className="flex-1 flex-row items-center mx-3">
+                <Ionicons name="location" size={12} color="#6B7280" />
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    marginLeft: 4,
+                    fontSize: 11,
+                    color: '#6B7280',
+                  }}
+                >
+                  {item.location}
+                </Text>
+              </View>
+
+              <View className="flex-row items-center">
+                <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+              </View>
             </View>
-          {item.description ? (
-            <Text className="text-gray-600 text-xs mt-1" numberOfLines={2}>{item.description}</Text>
-          ) : null}
-          <View className="flex-row items-center mt-2">
-            <Ionicons name="location" size={14} color="#4B5563" />
-            <Text className="text-gray-500 text-xs ml-1" numberOfLines={1}>{item.location}</Text>
           </View>
         </View>
-      </View>
-    </TouchableOpacity>
-    );
+      </TouchableOpacity>
+    )
   }
 
   const mapHtml = React.useMemo(() => {
@@ -310,34 +391,53 @@ const Home = () => {
         </View>
         {/* Header with user info */}
         <View className="px-5 pt-4" style={{ paddingHorizontal: s(20), paddingTop: s(16) }}>
-          <View className="bg-[#3B82F6] rounded-2xl border border-gray-100" style={{ padding: s(16) }}>
-            <View className="flex-row items-center">
-              <View className="w-20 h-20 rounded-full overflow-hidden bg-gray-100" style={{ marginRight: s(32), width: s(80), height: s(80) }}>
-                {user?.profile_pic ? (
-                  <Image 
-                    source={{ uri: user.profile_pic }} 
-                    className="w-full h-full" 
-                    resizeMode="cover"
-                    onError={() => {
-                      if (__DEV__) console.warn('Profile picture failed to load:', user.profile_pic);
-                    }}
-                  />
-                ) : (
-                  <View className="flex-1 items-center justify-center">
-                    <Ionicons name="person" size={20} color="#4A90E2" />
-                  </View>
-                )}
+          <View
+            className="bg-white rounded-2xl border border-gray-100 shadow-sm"
+            style={{ padding: s(16) }}
+          >
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center flex-1">
+                <View
+                  className="w-16 h-16 rounded-full overflow-hidden bg-gray-100"
+                  style={{ marginRight: s(16), width: s(64), height: s(64) }}
+                >
+                  {user?.profile_pic ? (
+                    <Image
+                      source={{ uri: user.profile_pic }}
+                      className="w-full h-full"
+                      resizeMode="cover"
+                      onError={() => {
+                        if (__DEV__) console.warn('Profile picture failed to load:', user.profile_pic);
+                      }}
+                    />
+                  ) : (
+                    <View className="flex-1 items-center justify-center">
+                      <Ionicons name="person" size={20} color="#4A90E2" />
+                    </View>
+                  )}
+                </View>
+                <View className="flex-1">
+                  <Title style={{ color: '#111827', marginBottom: 4 }} numberOfLines={1}>
+                    {user?.name || user?.userid || 'User'}
+                  </Title>
+                  <Body style={{ color: '#6B7280' }} numberOfLines={1}>
+                    {user?.barangay_position || 'Responder'}
+                  </Body>
+                </View>
               </View>
-              <View className="flex-1">
-                <Title style={{ color: '#fff' }} numberOfLines={1}>
-                  {user?.name || user?.userid || 'User'}
-                </Title>
-                <Body style={{ color: '#E5E7EB', marginTop: 2 }} numberOfLines={1}>
-                  Barangay: <Text className="font-medium">{user?.barangay || '—'}</Text>
-                </Body>
-                <Body style={{ color: '#E5E7EB' }} numberOfLines={1}>
-                  Position: <Text className="font-medium">{user?.barangay_position || '—'}</Text>
-                </Body>
+              <View
+                className="ml-3 px-3 py-1 rounded-full"
+                style={{ backgroundColor: '#DBEAFE' }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '600',
+                    color: '#1D4ED8',
+                  }}
+                >
+                  {user?.barangay ? `Barangay ${user.barangay}` : 'Barangay —'}
+                </Text>
               </View>
             </View>
           </View>
@@ -355,29 +455,93 @@ const Home = () => {
               <ScaledText baseSize={13} className="text-red-600 mb-2">{error}</ScaledText>
             ) : null}
 
-            <View className="flex-row justify-between">
-              <View className="flex-1 rounded-xl" style={{ backgroundColor: '#3B82F6', padding: s(12), marginRight: s(8) }}>
-                <ScaledText baseSize={12} style={{ color: '#FFFFFF' }}>Total Reports</ScaledText>
-                <ScaledText baseSize={22} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{reports.length}</ScaledText>
+            {/* Summary stats */}
+            <View className="flex-row justify-between mb-3">
+              <View
+                className="flex-1 rounded-2xl bg-white border border-gray-100 shadow-sm mr-2"
+                style={{ padding: s(12), borderLeftWidth: 4, borderLeftColor: '#3B82F6' }}
+              >
+                <ScaledText
+                  baseSize={11}
+                  className="tracking-wide"
+                  style={{ color: '#6B7280', textTransform: 'uppercase' }}
+                >
+                  Total Reports
+                </ScaledText>
+                <ScaledText
+                  baseSize={24}
+                  className="font-bold mt-1"
+                  style={{ color: '#111827' }}
+                >
+                  {reports.length}
+                </ScaledText>
+                <ScaledText
+                  baseSize={11}
+                  style={{ color: '#9CA3AF', marginTop: 2 }}
+                >
+                  All time
+                </ScaledText>
               </View>
-              <View className="flex-1 rounded-xl" style={{ backgroundColor: '#10B981', padding: s(12), marginLeft: s(8) }}>
-                <ScaledText baseSize={12} style={{ color: '#FFFFFF' }}>Reports Today</ScaledText>
-                <ScaledText baseSize={22} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{reports.filter(r => new Date(r.incident_datetime).toDateString() === new Date().toDateString()).length}</ScaledText>
+
+              <View
+                className="flex-1 rounded-2xl bg-white border border-gray-100 shadow-sm ml-2"
+                style={{ padding: s(12), borderLeftWidth: 4, borderLeftColor: '#10B981' }}
+              >
+                <ScaledText
+                  baseSize={11}
+                  className="tracking-wide"
+                  style={{ color: '#6B7280', textTransform: 'uppercase' }}
+                >
+                  Reports Today
+                </ScaledText>
+                <ScaledText
+                  baseSize={24}
+                  className="font-bold mt-1"
+                  style={{ color: '#111827' }}
+                >
+                  {reports.filter(r => new Date(r.incident_datetime).toDateString() === new Date().toDateString()).length}
+                </ScaledText>
+                <ScaledText
+                  baseSize={11}
+                  style={{ color: '#9CA3AF', marginTop: 2 }}
+                >
+                  Since 12:00 AM
+                </ScaledText>
               </View>
             </View>
 
             {/* By incident type */}
-            <View style={{ marginTop: s(16) }}>
+            <View style={{ marginTop: s(4) }}>
               <ScaledText baseSize={13} className="font-semibold text-gray-800 mb-2">Reports by Incident Type</ScaledText>
               <View className="flex-row flex-wrap -mx-1">
                 {incidentEntries.map(([type, count]: [string, number]) => (
                   <View key={type} className="w-1/2 px-1 mb-2">
-                    <View className="rounded-xl" style={{ backgroundColor: getIncidentColor(type) + 'E6', padding: s(12) }}>
-                      <View className="flex-row items-center">
-                        <Ionicons name={getIncidentIcon(type)} size={18} color="#FFFFFF" />
-                        <ScaledText baseSize={12} className="ml-2" style={{ color: '#FFFFFF' }} numberOfLines={1}>{type}</ScaledText>
+                    <View
+                      className="rounded-xl border border-gray-100 bg-white shadow-sm"
+                      style={{ padding: s(12) }}
+                    >
+                      <View className="flex-row items-center justify-between">
+                        <View
+                          className="w-9 h-9 rounded-full items-center justify-center mr-2"
+                          style={{ backgroundColor: getIncidentColor(type) + '1A' }}
+                        >
+                          <Ionicons
+                            name={getIncidentIcon(type)}
+                            size={18}
+                            color={getIncidentColor(type)}
+                          />
+                        </View>
+                        <ScaledText baseSize={18} className="font-bold text-gray-900">
+                          {count}
+                        </ScaledText>
                       </View>
-                      <ScaledText baseSize={20} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{count}</ScaledText>
+                      <ScaledText
+                        baseSize={12}
+                        className="mt-3 font-medium text-gray-600"
+                        numberOfLines={1}
+                      >
+                        {type}
+                      </ScaledText>
                     </View>
                   </View>
                 ))}
@@ -392,7 +556,10 @@ const Home = () => {
 
         {/* Reports list */}
         <View className="px-5 mt-4" style={{ paddingHorizontal: s(20), marginTop: s(16) }}>
-          <ScaledText baseSize={16} className="font-semibold text-gray-900" style={{ marginBottom: s(8) }}>Recent Reports</ScaledText>
+          <Title style={{ marginBottom: 2 }}>Recent Reports</Title>
+          <Subtitle style={{ color: '#6B7280', marginBottom: s(8) }}>
+            Latest activity from your reports
+          </Subtitle>
           {isLoading ? (
             <View className="bg-white rounded-2xl border border-gray-100 items-center" style={{ padding: s(24) }}>
               <ActivityIndicator size="small" color="#4A90E2" />
@@ -446,18 +613,40 @@ const Home = () => {
           {selectedReport && (
             <ScrollView className="flex-1" contentContainerStyle={{ padding: 20 }}>
               <View className="flex-row items-center mb-6">
-                <View className={`w-16 h-16 rounded-full items-center justify-center mr-4 shadow-sm bg-blue-50`}>
-                  <Ionicons name={getIncidentIcon(selectedReport.incident_type) as any} size={32} color="#4A90E2" />
+                <View
+                  className={`w-16 h-16 rounded-full items-center justify-center mr-4 shadow-sm`}
+                  style={{ backgroundColor: getIncidentColor(selectedReport.incident_type) + '1A' }}
+                >
+                  <Ionicons
+                    name={getIncidentIcon(selectedReport.incident_type) as any}
+                    size={32}
+                    color={getIncidentColor(selectedReport.incident_type)}
+                  />
                 </View>
                 <View className="flex-1">
                   <Text className={`text-2xl font-bold mb-1 text-gray-900`}>{selectedReport.incident_type}</Text>
-                  {(selectedReport.incident_type === 'Vehicular Accident' || selectedReport.incident_type === 'Others') && (
-                    <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_level || selectedReport.urgency_tag || 'Low') + 'E6' }}>
-                      <Text className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>
-                        {selectedReport.patient_status ? String(selectedReport.patient_status).toUpperCase() : String(selectedReport.urgency_tag || 'Low').toUpperCase()}
-                      </Text>
-                    </View>
-                  )}
+                  {(() => {
+                    const statusInfo = getPatientStatusInfo(selectedReport.patient_status || 'No Patient');
+                    return (
+                      <View
+                        className="px-3 py-1 rounded-full self-start flex-row items-center"
+                        style={{ backgroundColor: statusInfo.color + '1A' }}
+                      >
+                        <Ionicons
+                          name={statusInfo.icon as any}
+                          size={14}
+                          color={statusInfo.color}
+                          style={{ marginRight: 6 }}
+                        />
+                        <Text
+                          className="text-sm font-semibold"
+                          style={{ color: statusInfo.color }}
+                        >
+                          {statusInfo.text}
+                        </Text>
+                      </View>
+                    );
+                  })()}
                 </View>
               </View>
 
@@ -502,6 +691,12 @@ const Home = () => {
                     <Text className={`font-medium text-gray-900`}>
                       {new Date(selectedReport.incident_datetime).toLocaleDateString()} at {new Date(selectedReport.incident_datetime).toLocaleTimeString()}
       </Text>
+                  </View>
+                  <View className="flex-row justify-between mb-2">
+                    <Text className={'text-gray-600'}>Patient Status (AVPU):</Text>
+                    <Text className={`font-medium text-gray-900`}>
+                      {getPatientStatusInfo(selectedReport.patient_status || 'No Patient').text}
+                    </Text>
                   </View>
                   <View className="flex-row justify-between">
                     <Text className={'text-gray-600'}>Status:</Text>

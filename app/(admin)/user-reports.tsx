@@ -1,10 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ScaledText from '../../components/ScaledText';
 import { adminApi } from '../../src/utils/adminApi';
+
+type ModalAction = {
+  label: string;
+  onPress?: () => void;
+  variant?: 'primary' | 'secondary' | 'danger';
+  disabled?: boolean;
+};
 
 export default function AdminUserReportsScreen() {
   const { userId } = useLocalSearchParams<{ userId?: string }>();
@@ -15,6 +22,19 @@ export default function AdminUserReportsScreen() {
   const [showDetail, setShowDetail] = useState(false);
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalIcon, setModalIcon] = useState<keyof typeof Ionicons.glyphMap>('information-circle');
+  const [modalIconColor, setModalIconColor] = useState('#2563EB');
+  const [modalActions, setModalActions] = useState<ModalAction[]>([
+    {
+      label: 'OK',
+      onPress: () => setModalVisible(false),
+      variant: 'primary',
+    },
+  ]);
 
   const load = useCallback(async () => {
     try {
@@ -31,6 +51,31 @@ export default function AdminUserReportsScreen() {
       setRefreshing(false);
     }
   }, [userId]);
+
+  const showModal = (
+    title: string,
+    message: string,
+    icon: keyof typeof Ionicons.glyphMap,
+    color: string,
+    actions?: ModalAction[],
+  ) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalIcon(icon);
+    setModalIconColor(color);
+    setModalActions(
+      actions && actions.length > 0
+        ? actions
+        : [
+            {
+              label: 'OK',
+              onPress: () => setModalVisible(false),
+              variant: 'primary',
+            },
+          ],
+    );
+    setModalVisible(true);
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -90,15 +135,6 @@ export default function AdminUserReportsScreen() {
     return colorMap[type] || '#3B82F6';
   };
 
-  const getUrgencyColor = (urgency: string) => {
-    const colorMap: { [key: string]: string } = {
-      'Low': '#10B981',
-      'Moderate': '#F59E0B',
-      'High': '#EF4444'
-    };
-    return colorMap[urgency] || '#6B7280';
-  };
-
   // Helper function to get AVPU display info
   const getPatientStatusInfo = (status: string) => {
     switch (status) {
@@ -126,30 +162,42 @@ export default function AdminUserReportsScreen() {
     return s.slice(0, 4).toUpperCase();
   };
   const handleDeleteReport = (report: any) => {
-    Alert.alert(
+    showModal(
       'Delete report?',
       'Delete this report permanently?',
+      'alert-circle',
+      '#EF4444',
       [
-        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
-          style: 'destructive',
+          label: 'Cancel',
+          variant: 'secondary',
+          onPress: () => setModalVisible(false),
+        },
+        {
+          label: 'Delete',
+          variant: 'danger',
           onPress: async () => {
+            setModalVisible(false);
             try {
               await adminApi.deleteReport(String(report.id));
               setReports(prev => prev.filter(r => r.id !== report.id));
             } catch (error: any) {
-              Alert.alert('Error', error?.message || 'Failed to delete report. Please try again.');
+              showModal(
+                'Error',
+                error?.message || 'Failed to delete report. Please try again.',
+                'warning',
+                '#EF4444',
+              );
             }
           },
         },
-      ]
+      ],
     );
   };
   const renderReportItem = ({ item }: { item: any }) => {
     // Only show status tag for Vehicular Accident and Others incident types
     const shouldShowStatus = item.incident_type === 'Vehicular Accident' || item.incident_type === 'Others';
-    const statusInfo = shouldShowStatus ? getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low') : null;
+    const statusInfo = shouldShowStatus ? getPatientStatusInfo(item.patient_status || 'No Patient') : null;
     
     return (
       <TouchableOpacity activeOpacity={0.9} className="bg-white rounded-2xl border border-gray-100 p-4 mb-3" onPress={() => { setSelectedReport(item); setShowDetail(true); }} style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 10 }}>
@@ -239,9 +287,14 @@ export default function AdminUserReportsScreen() {
                 </View>
                 <View className="flex-1">
                   <Text className={`text-2xl font-bold mb-1 text-gray-900`}>{selectedReport.incident_type}</Text>
-                  <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedReport.urgency_tag) + 'E6' }}>
-                    <Text className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>{String(selectedReport.urgency_tag).toUpperCase()} PRIORITY</Text>
-                  </View>
+                  {(() => {
+                    const statusInfo = getPatientStatusInfo(selectedReport.patient_status || 'No Patient');
+                    return (
+                      <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: statusInfo.color + 'E6' }}>
+                        <Text className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>{statusInfo.text}</Text>
+                      </View>
+                    );
+                  })()}
                 </View>
               </View>
 

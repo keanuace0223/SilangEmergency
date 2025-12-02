@@ -3,7 +3,7 @@ import * as Contacts from 'expo-contacts'
 import * as ImagePicker from 'expo-image-picker'
 import { useRouter } from 'expo-router'
 import React from 'react'
-import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AppModal from '../../components/AppModal'
 import LocationPicker from '../../components/LocationPicker'
@@ -14,6 +14,13 @@ import { useUser } from '../../src/context/UserContext'
 import { uploadMultipleReportMedia } from '../../src/lib/supabase'
 import { compressImage } from '../../src/utils/imageOptimizer'
 import { offlineStorage } from '../../src/utils/offlineStorage'
+
+type ModalAction = {
+  label: string
+  onPress?: () => void
+  variant?: 'primary' | 'secondary' | 'danger'
+  disabled?: boolean
+}
 
 const CreateReport = () => {
   const router = useRouter()
@@ -31,7 +38,6 @@ const CreateReport = () => {
   const [location, setLocation] = React.useState('')
   const [contactNumber, setContactNumber] = React.useState('')
   const [patientStatus, setPatientStatus] = React.useState<'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | ''>('')
-  const [urgency, setUrgency] = React.useState<'Low' | 'Moderate' | 'High' | ''>('')
   const [othersSpecification, setOthersSpecification] = React.useState('')
   const [hasPatient, setHasPatient] = React.useState(false)
   const [limitStatus, setLimitStatus] = React.useState<{
@@ -59,12 +65,28 @@ const CreateReport = () => {
   const [modalMessage, setModalMessage] = React.useState('')
   const [modalIcon, setModalIcon] = React.useState<'checkmark-circle' | 'warning' | 'information-circle'>('information-circle')
   const [modalIconColor, setModalIconColor] = React.useState('#2563EB')
+  const [modalActions, setModalActions] = React.useState<ModalAction[]>([{
+    label: 'OK',
+    onPress: () => setModalVisible(false),
+    variant: 'primary',
+  }])
 
-  const showModal = (title: string, message: string, icon: 'checkmark-circle' | 'warning' | 'information-circle', color: string) => {
+  const showModal = (
+    title: string,
+    message: string,
+    icon: 'checkmark-circle' | 'warning' | 'information-circle',
+    color: string,
+    actions?: ModalAction[],
+  ) => {
     setModalTitle(title)
     setModalMessage(message)
     setModalIcon(icon)
     setModalIconColor(color)
+    setModalActions(
+      actions && actions.length > 0
+        ? actions
+        : [{ label: 'OK', onPress: () => setModalVisible(false), variant: 'primary' }]
+    )
     setModalVisible(true)
   }
 
@@ -171,7 +193,6 @@ const CreateReport = () => {
     setLocation('')
     setContactNumber('')
     setPatientStatus('')
-    setUrgency('')
     setDescription('')
     setMedia([])
     setIsSubmitting(false)
@@ -200,25 +221,15 @@ const CreateReport = () => {
       showModal('Validation error', 'Please enter a valid 11-digit mobile number starting with 09', 'warning', '#EF4444')
       return
     }
-    // Validate urgency/patient status based on incident type
-    const noPatientTypes = ['Fire', 'Flood', 'Earthquake', 'Electrical']
-    
+    // Validate patient status based on incident type
     if (incidentType === 'Vehicular Accident' && !patientStatus) {
       showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
       return
     }
 
-    if (incidentType === 'Others') {
-      if (hasPatient && !patientStatus) {
-        showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
-        return
-      }
-      if (!hasPatient && !urgency) {
-        showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
-        return
-      }
-    } else if (!noPatientTypes.includes(incidentType) && incidentType !== 'Vehicular Accident' && !urgency) {
-      showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
+    // For other incident types, require AVPU only when a patient is involved
+    if (incidentType !== 'Vehicular Accident' && hasPatient && !patientStatus) {
+      showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
       return
     }
     // Validate Others specification if Others is selected
@@ -246,24 +257,14 @@ const CreateReport = () => {
       return
     }
     // Validate urgency/patient status based on incident type
-    const noPatientTypes = ['Fire', 'Flood', 'Earthquake', 'Electrical']
-    
     if (incidentType === 'Vehicular Accident' && !patientStatus) {
       showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
       return
     }
 
-    if (incidentType === 'Others') {
-      if (hasPatient && !patientStatus) {
-        showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
-        return
-      }
-      if (!hasPatient && !urgency) {
-        showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
-        return
-      }
-    } else if (!noPatientTypes.includes(incidentType) && incidentType !== 'Vehicular Accident' && !urgency) {
-      showModal('Validation error', 'Please select urgency level', 'warning', '#EF4444')
+    // For other incident types, require AVPU only when a patient is involved
+    if (incidentType !== 'Vehicular Accident' && hasPatient && !patientStatus) {
+      showModal('Validation error', 'Please select patient status (AVPU)', 'warning', '#EF4444')
       return
     }
     // Validate Others specification if Others is selected
@@ -299,46 +300,18 @@ const CreateReport = () => {
         return;
       }
 
-      // Determine urgency level based on incident type
-      let urgencyLevel: 'Low' | 'Moderate' | 'High' = 'Low'
-      let finalPatientStatus: string | null = null
-      const noPatientTypes = ['Fire', 'Flood', 'Earthquake', 'Electrical']
-      
+      // Determine final patient status based on incident type
+      let finalPatientStatus: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | 'No Patient' = 'No Patient'
+
       if (incidentType === 'Vehicular Accident') {
-        // For Vehicular Accident, use AVPU patient status
-        finalPatientStatus = patientStatus
-        // Map AVPU to urgency level
-        urgencyLevel = 
-          patientStatus === 'Alert' ? 'Low' :
-          patientStatus === 'Voice' ? 'Moderate' :
-          patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
-      } else if (noPatientTypes.includes(incidentType)) {
-        // For no-patient incidents, set default urgency
-        if (hasPatient) {
-          finalPatientStatus = patientStatus
-          urgencyLevel = 
-            patientStatus === 'Alert' ? 'Low' :
-            patientStatus === 'Voice' ? 'Moderate' :
-            patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
+        // For Vehicular Accident, use AVPU patient status (already validated)
+        finalPatientStatus = (patientStatus || 'Alert') as any
+      } else {
+        // For other incident types, use AVPU only when patient is involved
+        if (hasPatient && patientStatus) {
+          finalPatientStatus = patientStatus as any
         } else {
           finalPatientStatus = 'No Patient'
-          urgencyLevel = 'Low'
-        }
-      } else {
-        // For other incident types, use urgency level directly
-        const effectiveUrgency = (urgency || 'Low') as 'Low' | 'Moderate' | 'High'
-        urgencyLevel = effectiveUrgency
-
-        if (incidentType === 'Others') {
-          // For 'Others', prefer AVPU when patient is involved
-          if (hasPatient && patientStatus) {
-            finalPatientStatus = patientStatus
-          } else {
-            finalPatientStatus = effectiveUrgency
-          }
-        } else {
-          // Store urgency as patient_status for backward compatibility
-          finalPatientStatus = effectiveUrgency
         }
       }
 
@@ -348,8 +321,6 @@ const CreateReport = () => {
         location: selectedLocation ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}` : location,
         contact_number: contactNumber,
         patient_status: finalPatientStatus as any,
-        urgency_level: urgencyLevel,
-        urgency_tag: urgencyLevel,
         description,
         uploaded_media: [] as string[],
         incident_datetime: new Date().toISOString(),
@@ -380,7 +351,6 @@ const CreateReport = () => {
             location: reportData.location,
             contactNumber: reportData.contact_number,
             patientStatus: reportData.patient_status,
-            urgencyLevel: reportData.urgency_level,
             description: reportData.description,
             mediaUrls
           }
@@ -473,35 +443,18 @@ const CreateReport = () => {
       }
 
       // Determine urgency level based on incident type
-      let urgencyLevel: 'Low' | 'Moderate' | 'High' = 'Low'
-      let finalPatientStatus: string | null = null
-      const noPatientTypes = ['Fire', 'Flood', 'Earthquake', 'Electrical']
-      
+      let finalPatientStatus: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | 'No Patient' = 'No Patient'
+
       if (incidentType === 'Vehicular Accident') {
-        // For Vehicular Accident, use AVPU patient status
-        finalPatientStatus = patientStatus
-        // Map AVPU to urgency level
-        urgencyLevel = 
-          patientStatus === 'Alert' ? 'Low' :
-          patientStatus === 'Voice' ? 'Moderate' :
-          patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
-      } else if (noPatientTypes.includes(incidentType)) {
-        // For no-patient incidents, set default urgency
-        if (hasPatient) {
-          finalPatientStatus = patientStatus
-          urgencyLevel = 
-            patientStatus === 'Alert' ? 'Low' :
-            patientStatus === 'Voice' ? 'Moderate' :
-            patientStatus === 'Pain' || patientStatus === 'Unresponsive' ? 'High' : 'Low'
+        // For Vehicular Accident, use AVPU patient status (already validated)
+        finalPatientStatus = (patientStatus || 'Alert') as any
+      } else {
+        // For other incident types, use AVPU only when patient is involved
+        if (hasPatient && patientStatus) {
+          finalPatientStatus = patientStatus as any
         } else {
           finalPatientStatus = 'No Patient'
-          urgencyLevel = 'Low'
         }
-      } else {
-        // For other incident types, use urgency level directly
-        urgencyLevel = urgency as 'Low' | 'Moderate' | 'High'
-        // Store urgency as patient_status for backward compatibility
-        finalPatientStatus = urgency
       }
 
       const reportData = {
@@ -510,8 +463,6 @@ const CreateReport = () => {
         location: selectedLocation ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}` : location,
         contact_number: contactNumber,
         patient_status: finalPatientStatus as any,
-        urgency_level: urgencyLevel,
-        urgency_tag: urgencyLevel,
         description,
         uploaded_media: [] as string[],
         incident_datetime: new Date().toISOString(),
@@ -629,25 +580,32 @@ const CreateReport = () => {
   }
 
   const pickMedia = () => {
-    Alert.alert(
+    showModal(
       'Add photos',
       'Choose an option',
+      'information-circle',
+      '#2563EB',
       [
         {
-          text: 'Take Photo',
+          label: 'Take Photo',
+          variant: 'primary',
           onPress: () => {
+            setModalVisible(false)
             void handleTakePhoto()
           },
         },
         {
-          text: 'Choose from Gallery',
+          label: 'Choose from Gallery',
+          variant: 'secondary',
           onPress: () => {
+            setModalVisible(false)
             void handlePickFromGallery()
           },
         },
         {
-          text: 'Cancel',
-          style: 'cancel',
+          label: 'Cancel',
+          variant: 'secondary',
+          onPress: () => setModalVisible(false),
         },
       ]
     )
@@ -721,62 +679,7 @@ const CreateReport = () => {
   
   const AVPUButton = React.memo(AVPUButtonComponent)
 
-  // Memoized urgency button component to prevent NativeWind from processing during state updates
-  const UrgencyButtonComponent = ({ opt, isSelected, onPress }: { 
-    opt: { level: 'Low' | 'Moderate' | 'High', color: string, icon: string, label: string }, 
-    isSelected: boolean, 
-    onPress: () => void 
-  }) => {
-    const baseClassName = 'rounded-xl border p-3 items-center justify-center'
-    const selectedClassName = 'shadow-lg'
-    const unselectedClassName = 'bg-white border-gray-300'
-    
-    return (
-      <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.8}
-        className={isSelected ? `${baseClassName} ${selectedClassName}` : `${baseClassName} ${unselectedClassName}`}
-        style={[
-          { flex: 1 },
-          isSelected ? {
-            backgroundColor: opt.color,
-            borderColor: opt.color,
-            shadowColor: opt.color,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 5,
-            elevation: 8,
-          } : {}
-        ]}
-      >
-        <View className="flex-row items-center mb-1">
-          <Ionicons
-            name={opt.icon as any}
-            size={16}
-            color={isSelected ? 'white' : opt.color}
-            style={{ marginRight: 6 }}
-          />
-          <ScaledText
-            baseSize={14}
-            className={isSelected ? 'font-semibold text-white' : 'font-semibold text-gray-900'}
-          >
-            {opt.label}
-          </ScaledText>
-        </View>
-      </TouchableOpacity>
-    )
-  }
-  
-  UrgencyButtonComponent.displayName = 'UrgencyButton'
-  
-  const UrgencyButton = React.memo(UrgencyButtonComponent)
-
-  // Memoize urgency options to prevent re-creation on every render
-  const urgencyOptions = React.useMemo(() => [
-    { level: 'Low' as const, color: '#10B981', icon: 'checkmark-circle-outline' as const, label: 'Low' },
-    { level: 'Moderate' as const, color: '#F59E0B', icon: 'alert-circle-outline' as const, label: 'Moderate' },
-    { level: 'High' as const, color: '#EF4444', icon: 'warning-outline' as const, label: 'High' },
-  ], [])
+  // (Urgency buttons removed; app now relies solely on patient_status AVPU and 'No Patient')
 
   return (
     <KeyboardAvoidingView 
@@ -862,7 +765,6 @@ const CreateReport = () => {
                     setShowIncidentMenu(false);
                     // Reset urgency/patient status when changing incident type
                     setPatientStatus('')
-                    setUrgency('')
                     setOthersSpecification('')
                     setHasPatient(false)
                   }}>
@@ -987,40 +889,6 @@ const CreateReport = () => {
                   </View>
                 </>
               )}
-
-              {incidentType === 'Others' && (
-                <>
-                  <ScaledText baseSize={14} className="mb-1 text-gray-600">Urgency Level</ScaledText>
-                  <View className="mb-4">
-                    <View className="flex-row gap-2 mb-2">
-                      {urgencyOptions.map(opt => (
-                        <UrgencyButton 
-                          key={opt.level} 
-                          opt={opt} 
-                          isSelected={urgency === opt.level}
-                          onPress={() => setUrgency(opt.level)}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                </>
-              )}
-            </>
-          ) : incidentType !== '' ? (
-            <>
-              <ScaledText baseSize={14} className="mb-1 text-gray-600">Urgency Level</ScaledText>
-              <View className="mb-4">
-                <View className="flex-row gap-2 mb-2">
-                  {urgencyOptions.map(opt => (
-                    <UrgencyButton 
-                      key={opt.level} 
-                      opt={opt} 
-                      isSelected={urgency === opt.level}
-                      onPress={() => setUrgency(opt.level)}
-                    />
-                  ))}
-                </View>
-              </View>
             </>
           ) : null}
 
@@ -1328,7 +1196,15 @@ const CreateReport = () => {
       )}
 
       {modalVisible && (
-        <AppModal visible={true} onClose={() => setModalVisible(false)} icon={modalIcon} iconColor={modalIconColor} title={modalTitle} message={modalMessage} actions={[{ label: 'OK', onPress: () => setModalVisible(false), variant: 'primary' }]} />
+        <AppModal
+          visible={true}
+          onClose={() => setModalVisible(false)}
+          icon={modalIcon}
+          iconColor={modalIconColor}
+          title={modalTitle}
+          message={modalMessage}
+          actions={modalActions}
+        />
       )}
     </KeyboardAvoidingView>
   )

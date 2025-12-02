@@ -185,9 +185,7 @@ const TabsLayout = () => {
             name="create-report"
             options={{
               href: null,
-              presentation: 'modal',
               headerShown: false,
-              tabBarVisible: false,
             }}
           />
       </Tabs>

@@ -87,70 +87,57 @@ const Drafts = () => {
     }, [fetchDrafts, user?.id])
   )
 
-  // Get status info for each item
+  // Get sync/draft status styling for each item
   const getStatusInfo = (item: any) => {
+    // Draft items
     if (item.isDraft) {
-      // Handle draft statuses
       switch (item.sync_status) {
         case 'syncing':
-          return { 
-            color: '#3B82F6', 
-            icon: 'sync', 
-            text: 'SYNCING',
-            bgColor: '#DBEAFE'
+          return {
+            label: 'SYNCING',
+            textColor: '#1D4ED8',
+            bgColor: '#DBEAFE',
+            syncing: true,
           }
         case 'error':
-          return { 
-            color: '#EF4444', 
-            icon: 'warning', 
-            text: 'SYNC ERROR',
-            bgColor: '#FEE2E2'
-          }
-        case 'synced':
-          return { 
-            color: '#10B981', 
-            icon: 'checkmark-circle', 
-            text: 'SYNCED',
-            bgColor: '#D1FAE5'
+          return {
+            label: 'SYNC FAILED',
+            textColor: '#B91C1C',
+            bgColor: '#FEE2E2',
+            syncing: false,
           }
         default:
-          return { 
-            color: '#6B7280', 
-            icon: 'document-outline', 
-            text: 'DRAFT',
-            bgColor: '#F3F4F6'
+          return {
+            label: 'DRAFT',
+            textColor: '#4B5563',
+            bgColor: '#F3F4F6',
+            syncing: false,
           }
       }
     }
-    
+
+    // Offline reports waiting to sync
     switch (item.sync_status) {
-      case 'pending':
-        return { 
-          color: '#F59E0B', 
-          icon: 'time', 
-          text: 'PENDING SYNC',
-          bgColor: '#FEF3C7'
-        }
       case 'syncing':
-        return { 
-          color: '#3B82F6', 
-          icon: 'sync', 
-          text: 'SYNCING',
-          bgColor: '#DBEAFE'
+        return {
+          label: 'SYNCING',
+          textColor: '#1D4ED8',
+          bgColor: '#DBEAFE',
+          syncing: true,
         }
       case 'error':
-        return { 
-          color: '#EF4444', 
-          icon: 'warning', 
-          text: 'SYNC ERROR',
-          bgColor: '#FEE2E2'
+        return {
+          label: 'SYNC FAILED',
+          textColor: '#B91C1C',
+          bgColor: '#FEE2E2',
+          syncing: false,
         }
       default:
-        return { 
-          color: '#F59E0B', 
-          icon: 'time', 
-          text: 'PENDING',
-          bgColor: '#FEF3C7'
+        return {
+          label: 'WAITING FOR NETWORK',
+          textColor: '#B45309',
+          bgColor: '#FFEDD5',
+          syncing: false,
         }
     }
   }
@@ -192,14 +179,22 @@ const Drafts = () => {
     return colorMap[type] || '#3B82F6'
   }
 
-  // Get urgency color
-  const getUrgencyColor = (urgency: string) => {
-    const colorMap: { [key: string]: string } = {
-      'Low': '#10B981',
-      'Moderate': '#F59E0B',
-      'High': '#EF4444'
+  // Helper to map patient_status to badge color/text
+  const getPatientStatusInfo = (status: string) => {
+    switch (status) {
+      case 'Alert':
+        return { text: 'ALERT', color: '#10B981' }
+      case 'Voice':
+        return { text: 'VOICE', color: '#F59E0B' }
+      case 'Pain':
+        return { text: 'PAIN', color: '#EF4444' }
+      case 'Unresponsive':
+        return { text: 'UNRESPONSIVE', color: '#EF4444' }
+      case 'No Patient':
+        return { text: 'NO PATIENT', color: '#6B7280' }
+      default:
+        return { text: (status || 'N/A').toUpperCase(), color: '#6B7280' }
     }
-    return colorMap[urgency] || '#6B7280'
   }
 
   // Handle item press
@@ -284,71 +279,131 @@ const Drafts = () => {
   // Render draft item
   const renderDraftItem = ({ item }: { item: any }) => {
     const statusInfo = getStatusInfo(item)
-    // Only show status tag for Vehicular Accident and Others incident types
-    const shouldShowStatus = item.incident_type === 'Vehicular Accident' || item.incident_type === 'Others';
+    const patientInfo = getPatientStatusInfo(item.patient_status || 'No Patient')
+    const isDraft = item.isDraft
+
+    const containerStyle: any = {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.08,
+      shadowRadius: 3,
+      elevation: 2,
+    }
+
+    if (isDraft) {
+      containerStyle.borderStyle = 'dashed'
+      containerStyle.borderWidth = 2
+      containerStyle.borderColor = '#E5E7EB'
+    } else {
+      containerStyle.borderLeftWidth = 4
+      containerStyle.borderLeftColor = getIncidentColor(item.incident_type)
+    }
     
     return (
-      <TouchableOpacity onPress={() => handleItemPress(item)} activeOpacity={0.8} className="mx-6">
-        <View className={`bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-lg`} style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 12 }}>
-          <View className={`px-6 py-5 bg-gradient-to-r from-blue-50 to-indigo-50`}>
+      <TouchableOpacity onPress={() => handleItemPress(item)} activeOpacity={0.85} className="mx-4">
+        <View
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm"
+          style={containerStyle}
+        >
+          <View className="px-4 py-3">
+            {/* Header row */}
             <View className="flex-row items-start justify-between">
-              <View className="flex-row items-start flex-1 mr-3" style={{ maxWidth: '70%' }}>
-                <View className={`w-12 h-12 rounded-xl bg-white items-center justify-center mr-4 shadow-sm`} style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 3 }}>
-                  <Ionicons name={getIncidentIcon(item.incident_type) as any} size={24} color={getIncidentColor(item.incident_type)} />
+              <View className="flex-row items-center flex-1 pr-2">
+                <View
+                  className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                  style={{
+                    backgroundColor: isDraft
+                      ? '#F3F4F6'
+                      : getIncidentColor(item.incident_type) + '1A',
+                  }}
+                >
+                  <Ionicons
+                    name={getIncidentIcon(item.incident_type) as any}
+                    size={20}
+                    color={isDraft ? '#6B7280' : getIncidentColor(item.incident_type)}
+                  />
                 </View>
                 <View className="flex-1">
-                  <View className="mb-2">
-                    <Subtitle 
-                      style={{ color: '#111827', fontWeight: '700' }}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit={true}
-                      minimumFontScale={0.7}
-                    >
-                      {item.incident_type}
-                    </Subtitle>
-                    <View className="mt-1 px-2 py-1 rounded-full self-start" style={{ backgroundColor: statusInfo.bgColor, maxWidth: '80%' }}>
-                      <Caption className="font-medium" style={{ color: statusInfo.color, fontSize: 9 }}>
-                        {statusInfo.text}
-                      </Caption>
-                    </View>
-                  </View>
-                  <View className="flex-row items-center">
-                    <Ionicons name="location" size={12} color="#4B5563" />
-                    <Body 
-                      className={`ml-1 font-medium`} 
-                      style={{ color: '#4B5563' }}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit={true}
-                      minimumFontScale={0.7}
-                    >
-                      {item.location}
-                    </Body>
-                  </View>
+                  <Subtitle
+                    style={{ color: '#111827', fontWeight: '700', fontSize: 16 }}
+                    numberOfLines={1}
+                  >
+                    {item.incident_type || 'Draft Report'}
+                  </Subtitle>
                 </View>
               </View>
-              {shouldShowStatus && (
-                <View className="px-2 py-1 rounded-full shadow-sm flex-shrink-0" style={{ backgroundColor: getUrgencyColor(item.urgency_level || item.urgency_tag || 'Low'), shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
-                  <Caption className="font-bold tracking-wide" style={{ color: '#FFFFFF', fontSize: 10 }}>
-                    {item.patient_status ? String(item.patient_status).toUpperCase() : String(item.urgency_tag || 'Low').toUpperCase()}
+              <Caption
+                className="text-xs"
+                style={{ color: '#9CA3AF', marginLeft: 8 }}
+              >
+                {formatTimestamp(item.created_at)}
+              </Caption>
+            </View>
+
+            {/* Description */}
+            {item.description ? (
+              <Body
+                className="mt-2 text-sm"
+                style={{ color: '#4B5563' }}
+                numberOfLines={2}
+              >
+                {item.description}
+              </Body>
+            ) : null}
+
+            {/* Location */}
+            {item.location ? (
+              <View className="flex-row items-center mt-2">
+                <Ionicons name="location" size={12} color="#6B7280" />
+                <Caption
+                  numberOfLines={1}
+                  style={{
+                    marginLeft: 4,
+                    fontSize: 11,
+                    color: '#6B7280',
+                  }}
+                >
+                  {item.location}
+                </Caption>
+              </View>
+            ) : null}
+
+            {/* Footer: urgency + sync status */}
+            <View className="mt-3 flex-row items-center justify-between">
+              <View className="flex-row items-center">
+                <View
+                  className="px-2.5 py-1 rounded-full"
+                  style={{ backgroundColor: patientInfo.color + '1A' }}
+                >
+                  <Caption
+                    className="font-semibold"
+                    style={{ color: patientInfo.color, fontSize: 10 }}
+                  >
+                    {patientInfo.text}
                   </Caption>
                 </View>
-              )}
-            </View>
-          </View>
-
-          <View className="px-6 py-5">
-            <Body className={`leading-6 mb-4`} style={{ color: '#374151' }} numberOfLines={2}>{item.description}</Body>
-            <View className={`flex-row items-center justify-between pt-3 border-t border-gray-100`}>
-              <View className="flex-row items-center">
-                <View className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: statusInfo.color }} />
-                <Caption className={`font-medium`} style={{ color: '#6B7280' }}>
-                  {item.isDraft ? 'Saved as draft' : 'Waiting to sync'}
-                </Caption>
-                {item.sync_status === 'syncing' && (
-                  <ActivityIndicator size="small" color={statusInfo.color} style={{ marginLeft: 8 }} />
-                )}
               </View>
-              <Caption className={`font-medium`} style={{ color: '#9CA3AF' }}>{formatTimestamp(item.created_at)}</Caption>
+
+              <View className="flex-row items-center">
+                <View
+                  className="px-2.5 py-1 rounded-full flex-row items-center"
+                  style={{ backgroundColor: statusInfo.bgColor }}
+                >
+                  <Caption
+                    className="font-semibold"
+                    style={{ color: statusInfo.textColor, fontSize: 10 }}
+                  >
+                    {statusInfo.label}
+                  </Caption>
+                  {statusInfo.syncing && (
+                    <ActivityIndicator
+                      size="small"
+                      color={statusInfo.textColor}
+                      style={{ marginLeft: 6 }}
+                    />
+                  )}
+                </View>
+              </View>
             </View>
           </View>
         </View>
@@ -440,13 +495,16 @@ const Drafts = () => {
                 </View>
                 <View className="flex-1">
                   <ScaledText baseSize={22} className={`font-bold mb-1 text-gray-900`}>{selectedDraft.incident_type}</ScaledText>
-                  {(selectedDraft.incident_type === 'Vehicular Accident' || selectedDraft.incident_type === 'Others') && (
-                    <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: getUrgencyColor(selectedDraft.urgency_level || selectedDraft.urgency_tag || 'Low') + 'E6' }}>
-                      <ScaledText baseSize={14} className="font-semibold" style={{ color: '#FFFFFF' }}>
-                        {selectedDraft.patient_status ? String(selectedDraft.patient_status).toUpperCase() : String(selectedDraft.urgency_tag || 'Low').toUpperCase()}
-                      </ScaledText>
-                    </View>
-                  )}
+                  {(selectedDraft.incident_type === 'Vehicular Accident' || selectedDraft.incident_type === 'Others') && (() => {
+                    const badge = getPatientStatusInfo(selectedDraft.patient_status || 'No Patient')
+                    return (
+                      <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: badge.color + 'E6' }}>
+                        <ScaledText baseSize={14} className="font-semibold" style={{ color: '#FFFFFF' }}>
+                          {badge.text}
+                        </ScaledText>
+                      </View>
+                    )
+                  })()}
                 </View>
               </View>
 

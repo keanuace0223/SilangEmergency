@@ -91,9 +91,7 @@ export interface Report {
   incident_type: string;
   location: string;
   contact_number: string;
-  urgency_tag?: 'Low' | 'Moderate' | 'High'; // Kept for backward compatibility
   patient_status: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | 'No Patient';
-  urgency_level: 'Low' | 'Moderate' | 'High';
   report_type?: 'official' | 'follow-up';
   description: string;
   uploaded_media: string[];
@@ -427,18 +425,11 @@ export const db = {
     
     // Determine report_type based on count
     const reportType: 'official' | 'follow-up' = reportCount === 0 ? 'official' : 'follow-up';
-    
-    // Ensure patient_status has corresponding urgency_level
-    const urgencyLevel: 'Low' | 'Moderate' | 'High' = 
-      reportData.patient_status === 'Alert' ? 'Low' :
-      reportData.patient_status === 'Voice' ? 'Moderate' :
-      reportData.patient_status === 'Pain' || reportData.patient_status === 'Unresponsive' ? 'High' : 'Low';
-    
+
+    // Attach report_type only; urgency is now derived purely from patient_status at read time
     const reportDataWithType = {
       ...reportData,
       report_type: reportType,
-      urgency_level: reportData.urgency_level || urgencyLevel,
-      urgency_tag: reportData.urgency_tag || urgencyLevel, // Keep for backward compatibility
     };
     
     const { data, error } = await supabase

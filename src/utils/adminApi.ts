@@ -422,7 +422,6 @@ class AdminApiService {
     limit?: number;
     search?: string;
     barangay?: string;
-    urgency?: string;
     startDate?: string;
     endDate?: string;
   } = {}): Promise<{
@@ -437,7 +436,7 @@ class AdminApiService {
       let query = supabaseAdmin
         .from('reports')
         .select(`
-          id, user_id, incident_type, location, urgency_tag, description, uploaded_media, incident_datetime, created_at,
+          id, user_id, incident_type, location, description, uploaded_media, incident_datetime, created_at,
           users:user_id (
             userid,
             name,
@@ -448,9 +447,6 @@ class AdminApiService {
       // Apply filters
       if (params.search) {
         query = query.or(`title.ilike.%${params.search}%,description.ilike.%${params.search}%`);
-      }
-      if (params.urgency) {
-        query = query.eq('urgency', params.urgency);
       }
       if (params.startDate) {
         query = query.gte('created_at', params.startDate);

@@ -4,8 +4,9 @@ import * as FileSystem from 'expo-file-system/legacy'
 import * as ImagePicker from 'expo-image-picker'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, Animated, Dimensions, KeyboardAvoidingView, Modal, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Animated, Dimensions, KeyboardAvoidingView, Modal, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import AppModal from '../../components/AppModal'
 import OptimizedProfilePicture from '../../components/OptimizedProfilePicture'
 import { api } from '../../src/api/client'
 import { useSettings } from '../../src/context/SettingsContext'
@@ -23,6 +24,11 @@ const Profile = () => {
   const [showPersonalModal, setShowPersonalModal] = useState(false)
   const [showDeleteAvatarConfirm, setShowDeleteAvatarConfirm] = useState(false)
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null)
+  const [infoModalVisible, setInfoModalVisible] = useState(false)
+  const [infoModalTitle, setInfoModalTitle] = useState('')
+  const [infoModalMessage, setInfoModalMessage] = useState('')
+  const [infoModalIcon, setInfoModalIcon] = useState<keyof typeof Ionicons.glyphMap>('information-circle')
+  const [infoModalIconColor, setInfoModalIconColor] = useState('#2563EB')
 
   // Extract a Supabase Storage path from either a raw path or a signed/public URL
   const getStoragePathFromValue = useCallback((value: string | null | undefined): string | null => {
@@ -76,6 +82,18 @@ const Profile = () => {
     }
   }, [])
 
+  const showInfoModal = (
+    title: string,
+    message: string,
+    icon: keyof typeof Ionicons.glyphMap,
+    color: string,
+  ) => {
+    setInfoModalTitle(title)
+    setInfoModalMessage(message)
+    setInfoModalIcon(icon)
+    setInfoModalIconColor(color)
+    setInfoModalVisible(true)
+  }
 
   const [editName, setEditName] = useState('')
   const [editBarangay, setEditBarangay] = useState('')
@@ -228,7 +246,7 @@ const Profile = () => {
                       const { path, signedUrl, error } = await uploadProfileImage(String(user.id), localUri)
                       if (error || !path) {
                         console.warn('Avatar upload failed or path missing. Not updating DB.', error)
-                        Alert.alert('Upload failed', (error as any)?.message || 'Could not upload image to storage.')
+                        showInfoModal('Upload failed', (error as any)?.message || 'Could not upload image to storage.', 'warning', '#EF4444')
                         return
                       }
                       const finalUrl = signedUrl || localUri
@@ -319,7 +337,7 @@ const Profile = () => {
                         const { error } = await deleteAvatar(storagePath)
                         if (error) {
                           console.warn('Delete avatar from storage failed', error)
-                          Alert.alert('Delete failed', 'Could not delete file from storage. It may be a permissions issue.')
+                          showInfoModal('Delete failed', 'Could not delete file from storage. It may be a permissions issue.', 'warning', '#EF4444')
                         }
                       } catch (e) {
                         console.warn('Delete avatar from storage threw', e)
@@ -503,7 +521,7 @@ const Profile = () => {
             </View>
 
             {/* Additional Settings Placeholder */}
-            <TouchableOpacity onPress={() => Alert.alert('Coming Soon')} className="flex-row items-center justify-between py-4">
+            <TouchableOpacity onPress={() => showInfoModal('Coming Soon', 'This feature will be available in a future update.', 'information-circle', '#2563EB')} className="flex-row items-center justify-between py-4">
               <View className="flex-row items-center">
                 <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center mr-4">
                   <Ionicons name="notifications-outline" size={20} color="#4A90E2" />
@@ -516,7 +534,7 @@ const Profile = () => {
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => Alert.alert('Coming Soon')} className="flex-row items-center justify-between py-4">
+            <TouchableOpacity onPress={() => showInfoModal('Coming Soon', 'This feature will be available in a future update.', 'information-circle', '#2563EB')} className="flex-row items-center justify-between py-4">
               <View className="flex-row items-center">
                 <View className="w-10 h-10 bg-purple-100 rounded-full items-center justify-center mr-4">
                   <Ionicons name="shield-outline" size={20} color="#8B5CF6" />
@@ -676,6 +694,14 @@ const Profile = () => {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+      <AppModal
+        visible={infoModalVisible}
+        onClose={() => setInfoModalVisible(false)}
+        icon={infoModalIcon}
+        iconColor={infoModalIconColor}
+        title={infoModalTitle}
+        message={infoModalMessage}
+      />
     </ScrollView>
     </SafeAreaView>
   )
