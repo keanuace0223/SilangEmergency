@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppModal from '../../components/AppModal';
+import OptimizedProfilePicture from '../../components/OptimizedProfilePicture';
 import ScaledText from '../../components/ScaledText';
 import { adminApi, type AdminUser } from '../../src/utils/adminApi';
 
@@ -268,10 +269,27 @@ export default function AdminUsersScreen() {
 
       <View className="bg-white px-6 py-3 border-b border-gray-100">
         <Text className="text-gray-700 mb-2">Search</Text>
-        <TextInput value={search} onChangeText={setSearch} placeholder="Name or userid or barangay" className="border border-gray-300 rounded-lg px-4 py-3 text-gray-900" onSubmitEditing={load} />
+        <View className="flex-row items-center bg-white border border-gray-100 rounded-xl px-3 py-2 shadow-sm">
+          <Ionicons name="search" size={18} color="#9CA3AF" style={{ marginRight: 8 }} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Name, userid, or barangay"
+            placeholderTextColor="#9CA3AF"
+            className="flex-1 text-gray-900"
+            onSubmitEditing={load}
+          />
+          {loading ? (
+            <ActivityIndicator size="small" color="#4A90E2" />
+          ) : null}
+        </View>
         <View className="flex-row gap-3 mt-3">
-          <TouchableOpacity onPress={load} className="px-4 py-3 rounded-lg bg-[#4A90E2]"><Text className="text-white font-semibold">Apply</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => { setSearch(''); load(); }} className="px-4 py-3 rounded-lg bg-gray-100"><Text className="text-gray-800 font-semibold">Reset</Text></TouchableOpacity>
+          <TouchableOpacity onPress={load} className="flex-1 py-3 rounded-xl bg-[#4A90E2] items-center justify-center">
+            <Text className="text-white font-semibold">Apply</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => { setSearch(''); load(); }} className="flex-1 py-3 rounded-xl bg-gray-100 items-center justify-center border border-gray-200">
+            <Text className="text-gray-800 font-semibold">Reset</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -285,41 +303,48 @@ export default function AdminUsersScreen() {
             <Text className="text-center text-gray-500">No users found.</Text>
           ) : (
             users.map((item) => (
-              <View key={item.id} className="bg-white rounded-xl border border-gray-100 p-4 mb-3 shadow-sm">
-                <View className="flex-row items-center justify-between">
-                  <View style={{ flex: 1, paddingRight: 12 }}>
-                    <ScaledText baseSize={14} className="font-semibold text-gray-900">{item.name || 'Unnamed'}</ScaledText>
-                    <Text className="text-xs text-gray-500" numberOfLines={1}>{item.userid} • {item.barangay || '—'}</Text>
-                    {typeof (item as any).reportCount === 'number' ? (
-                      <Text className="text-xs text-gray-500 mt-1">Reports: {(item as any).reportCount}</Text>
-                    ) : null}
-                  </View>
-                  <View className="flex-row items-center gap-2">
-                    <TouchableOpacity
-                      onPress={() => router.push({ pathname: '/(admin)/user-reports', params: { userId: item.id } })}
-                      className="w-9 h-9 rounded-full bg-blue-50 items-center justify-center border border-blue-100"
-                    >
-                      <Ionicons name="document-text" size={18} color="#2563EB" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setConfirmUser(item)}
-                      className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center border border-gray-200"
-                    >
-                      <Ionicons name="refresh" size={18} color="#4B5563" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleForceLogout(item)}
-                      className="w-9 h-9 rounded-full bg-orange-50 items-center justify-center border border-orange-200"
-                    >
-                      <Ionicons name="log-out-outline" size={18} color="#EA580C" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleDeleteUser(item)}
-                      className="w-9 h-9 rounded-full bg-red-50 items-center justify-center border border-red-200"
-                    >
-                      <Ionicons name="trash-outline" size={18} color="#DC2626" />
-                    </TouchableOpacity>
-                  </View>
+              <View
+                key={item.id}
+                className="bg-white mb-3 p-4 rounded-xl shadow-sm border border-gray-100 flex-row items-center"
+              >
+                <View style={{ marginRight: 12 }}>
+                  <OptimizedProfilePicture
+                    uri={(item as any).profile_pic || (item as any).avatar_url || undefined}
+                    size={48}
+                  />
+                </View>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <ScaledText baseSize={14} className="font-bold text-gray-900">
+                    {item.name || 'Unnamed'}
+                  </ScaledText>
+                  <Text className="text-xs text-gray-500 mt-1" numberOfLines={1}>
+                    {item.userid} • {item.barangay || '—'}
+                  </Text>
+                  {typeof (item as any).reportCount === 'number' ? (
+                    <Text className="text-xs text-gray-500 mt-1">
+                      Reports: {(item as any).reportCount}
+                    </Text>
+                  ) : null}
+                </View>
+                <View className="flex-row items-center gap-2 ml-2">
+                  <TouchableOpacity
+                    onPress={() => router.push({ pathname: '/(admin)/user-reports', params: { userId: item.id } })}
+                    className="w-9 h-9 rounded-full bg-blue-50 items-center justify-center border border-blue-100"
+                  >
+                    <Ionicons name="document-text" size={18} color="#2563EB" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setConfirmUser(item)}
+                    className="w-9 h-9 rounded-full bg-orange-50 items-center justify-center border border-orange-200"
+                  >
+                    <Ionicons name="refresh" size={18} color="#EA580C" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteUser(item)}
+                    className="w-9 h-9 rounded-full bg-red-50 items-center justify-center border border-red-200"
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                  </TouchableOpacity>
                 </View>
               </View>
             ))

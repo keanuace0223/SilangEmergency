@@ -106,34 +106,141 @@ export default function AdminOverviewScreen() {
     }
   };
 
+  // Incident type icons mapping (mirror user reports screen)
+  const getIncidentIcon = (type: string) => {
+    const iconMap: { [key: string]: string } = {
+      Fire: 'flame',
+      'Vehicular Accident': 'car',
+      Flood: 'water',
+      Earthquake: 'earth',
+      Electrical: 'flash',
+    };
+    return iconMap[type] || 'warning';
+  };
+
+  // Incident icon colors mapping
+  const getIncidentColor = (type: string) => {
+    const colorMap: { [key: string]: string } = {
+      Fire: '#FF6B35',
+      'Vehicular Accident': '#FF4444',
+      Flood: '#4A90E2',
+      Earthquake: '#8B4513',
+      Electrical: '#F59E0B',
+    };
+    return colorMap[type] || '#3B82F6';
+  };
+
+  const formatTimestamp = (timestamp?: string) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
   const renderRecent = ({ item }: { item: any }) => {
-    // Only show status tag for Vehicular Accident and Others incident types
-    const shouldShowStatus = item.incident_type === 'Vehicular Accident' || item.incident_type === 'Others';
-    const statusInfo = shouldShowStatus ? getPatientStatusInfo(item.patient_status || item.urgency_tag || 'Low') : null;
-    
+    const statusInfo = getPatientStatusInfo(item.patient_status || item.urgency_tag || 'No Patient');
+
     return (
-    <View className="bg-white rounded-2xl border border-gray-100 p-4 mb-3" style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 10 }}>
-      <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center flex-1">
-          <View className="w-10 h-10 rounded-xl bg-blue-50 items-center justify-center mr-3">
-            <Ionicons name="document-text" size={18} color="#4A90E2" />
-          </View>
-          <View className="flex-1">
-            <ScaledText baseSize={14} className="font-semibold text-gray-900">{item.incident_type}</ScaledText>
-            <Text className="text-xs text-gray-500">{new Date(item.incident_datetime || item.created_at).toLocaleString()}</Text>
-          </View>
-        </View>
-        {statusInfo && (
-          <View className="px-2 py-1 rounded-full flex-row items-center" style={{ backgroundColor: statusInfo.color + 'E6' }}>
-            <Ionicons name={statusInfo.icon as any} size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
-            <Text className="text-[10px] font-bold" style={{ color: '#FFFFFF' }}>
-              {statusInfo.text}
+      <View
+        className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-3"
+        style={{
+          borderLeftWidth: 4,
+          borderLeftColor: getIncidentColor(item.incident_type),
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.08,
+          shadowRadius: 3,
+          elevation: 2,
+        }}
+      >
+        <View className="px-4 py-3">
+          {/* Top row: icon, title, timestamp */}
+          <View className="flex-row items-start justify-between">
+            <View className="flex-row items-center flex-1">
+              <View
+                className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                style={{ backgroundColor: getIncidentColor(item.incident_type) + '1A' }}
+              >
+                <Ionicons
+                  name={getIncidentIcon(item.incident_type) as any}
+                  size={20}
+                  color={getIncidentColor(item.incident_type)}
+                />
+              </View>
+              <View className="flex-1">
+                <Text
+                  className="text-lg font-bold text-gray-900"
+                  numberOfLines={1}
+                >
+                  {item.incident_type}
+                </Text>
+              </View>
+            </View>
+            <Text
+              className="text-xs text-gray-400 ml-2"
+              numberOfLines={1}
+            >
+              {formatTimestamp(item.incident_datetime || item.created_at)}
             </Text>
           </View>
-        )}
+
+          {/* Description */}
+          {item.description ? (
+            <Text
+              className="mt-2 text-sm text-gray-600"
+              numberOfLines={2}
+            >
+              {item.description}
+            </Text>
+          ) : null}
+
+          {/* Bottom row: status badge + location */}
+          <View className="mt-3 flex-row items-center justify-between">
+            {statusInfo && (
+              <View
+                className="flex-row items-center px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: statusInfo.color + '1A' }}
+              >
+                <Ionicons
+                  name={statusInfo.icon as any}
+                  size={11}
+                  color={statusInfo.color}
+                  style={{ marginRight: 4 }}
+                />
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '600',
+                    color: statusInfo.color,
+                  }}
+                >
+                  {statusInfo.text}
+                </Text>
+              </View>
+            )}
+
+            <View className="flex-1 flex-row items-center mx-3">
+              <Ionicons name="location" size={12} color="#6B7280" />
+              <Text
+                numberOfLines={1}
+                style={{
+                  marginLeft: 4,
+                  fontSize: 11,
+                  color: '#6B7280',
+                }}
+              >
+                {item.location}
+              </Text>
+            </View>
+          </View>
+        </View>
       </View>
-      {item.description ? <Text className="text-gray-600 text-sm mt-2" numberOfLines={2}>{item.description}</Text> : null}
-    </View>
     );
   };
 
@@ -150,64 +257,79 @@ export default function AdminOverviewScreen() {
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 140 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
         >
-          {/* Header mirror (inside scroll, not sticky) */}
-          <View className="bg-white px-6 py-6 border border-gray-100 rounded-2xl mb-4 shadow-sm">
-            <View className="flex-row items-center">
-              <Image source={images.logo} style={{ width: Math.round(70 * Math.min(textScale, 1.25)), height: Math.round(70 * Math.min(textScale, 1.25)), resizeMode: 'contain', marginRight: s(20) }} />
-              <View>
+          {/* Header - title left, admin avatar right */}
+          <View className="bg-white px-6 py-5 border border-gray-100 rounded-2xl mb-4 shadow-sm flex-row items-center justify-between">
+            <View className="flex-row items-center flex-1">
+              <Image
+                source={images.logo}
+                style={{
+                  width: Math.round(52 * Math.min(textScale, 1.1)),
+                  height: Math.round(52 * Math.min(textScale, 1.1)),
+                  resizeMode: 'contain',
+                  marginRight: s(16),
+                }}
+              />
+              <View className="flex-1">
                 <ScaledText baseSize={22} className="font-bold text-gray-900">Admin Overview</ScaledText>
-                <Text className="text-gray-600">System-wide statistics & recent reports</Text>
+                <Text className="text-gray-600" numberOfLines={1}>Silang DRRMO dashboard</Text>
               </View>
             </View>
-          </View>
-
-          {/* Admin info card (mirror of user card) */}
-          <View className="px-1 pb-2">
-            <View className="bg-white rounded-2xl border border-gray-100 p-4 flex-row items-center shadow-sm">
-              <View className="w-12 h-12 rounded-full bg-blue-50 items-center justify-center mr-4">
-                <Ionicons name="shield-checkmark" size={22} color="#2563EB" />
-              </View>
-              <View className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 mr-4">
-                {user?.profile_pic ? (
-                  <Image source={{ uri: user.profile_pic }} className="w-full h-full" resizeMode="cover" />
-                ) : (
-                  <View className="flex-1 items-center justify-center">
-                    <Ionicons name="person" size={20} color="#4A90E2" />
-                  </View>
-                )}
-              </View>
-              <View className="flex-1">
-                <ScaledText baseSize={18} className="font-bold text-gray-900">{user?.name || 'Admin'}</ScaledText>
-                <Text style={{ color: '#4B5563', marginTop: 2 }} numberOfLines={1}>Barangay: <Text className="font-medium">{user?.barangay || '—'}</Text></Text>
-                <Text style={{ color: '#4B5563' }} numberOfLines={1}>Position: <Text className="font-medium">{user?.barangay_position || '—'}</Text></Text>
-              </View>
+            <View className="w-10 h-10 rounded-full overflow-hidden bg-gray-100 ml-3">
+              {user?.profile_pic ? (
+                <Image source={{ uri: user.profile_pic }} className="w-full h-full" resizeMode="cover" />
+              ) : (
+                <View className="flex-1 items-center justify-center">
+                  <Ionicons name="person" size={18} color="#4A90E2" />
+                </View>
+              )}
             </View>
           </View>
 
           {stats && (
             <View>
-              {/* Overview stats */}
-              <View className="flex-row mb-4">
-                <View className="flex-1 bg-white rounded-xl border border-gray-100 mr-2 px-4 py-3 shadow-sm">
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center">
-                      <View className="w-9 h-9 rounded-full bg-blue-50 items-center justify-center mr-3">
-                        <Ionicons name="bar-chart" size={18} color="#2563EB" />
-                      </View>
-                      <ScaledText baseSize={12} className="text-gray-600">Total Reports</ScaledText>
+              {/* Overview stats - 4 white cards grid */}
+              <View className="flex-row flex-wrap -mx-1 mb-4">
+                {/* Total Reports */}
+                <View className="w-1/2 px-1 mb-3">
+                  <View className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <View className="w-9 h-9 rounded-full bg-blue-50 items-center justify-center mb-2">
+                      <Ionicons name="bar-chart" size={18} color="#2563EB" />
                     </View>
-                    <ScaledText baseSize={22} className="font-bold text-gray-900">{stats.totalReports}</ScaledText>
+                    <Text className="text-xs font-semibold text-gray-500">Total Reports</Text>
+                    <ScaledText baseSize={22} className="font-bold text-gray-900 mt-1">{stats.totalReports}</ScaledText>
                   </View>
                 </View>
-                <View className="flex-1 bg-white rounded-xl border border-gray-100 ml-2 px-4 py-3 shadow-sm">
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center">
-                      <View className="w-9 h-9 rounded-full bg-emerald-50 items-center justify-center mr-3">
-                        <Ionicons name="people" size={18} color="#059669" />
-                      </View>
-                      <ScaledText baseSize={12} className="text-gray-600">Total Users</ScaledText>
+
+                {/* Total Users */}
+                <View className="w-1/2 px-1 mb-3">
+                  <View className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <View className="w-9 h-9 rounded-full bg-emerald-50 items-center justify-center mb-2">
+                      <Ionicons name="people" size={18} color="#059669" />
                     </View>
-                    <ScaledText baseSize={22} className="font-bold text-gray-900">{stats.totalUsers}</ScaledText>
+                    <Text className="text-xs font-semibold text-gray-500">Total Users</Text>
+                    <ScaledText baseSize={22} className="font-bold text-gray-900 mt-1">{stats.totalUsers}</ScaledText>
+                  </View>
+                </View>
+
+                {/* Recent Reports (last 30 days) */}
+                <View className="w-1/2 px-1 mb-3">
+                  <View className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <View className="w-9 h-9 rounded-full bg-orange-50 items-center justify-center mb-2">
+                      <Ionicons name="time" size={18} color="#F97316" />
+                    </View>
+                    <Text className="text-xs font-semibold text-gray-500">Recent (30 days)</Text>
+                    <ScaledText baseSize={22} className="font-bold text-gray-900 mt-1">{stats.recentReports}</ScaledText>
+                  </View>
+                </View>
+
+                {/* High urgency / critical reports (using High urgency_tag) */}
+                <View className="w-1/2 px-1 mb-3">
+                  <View className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <View className="w-9 h-9 rounded-full bg-red-50 items-center justify-center mb-2">
+                      <Ionicons name="alert-circle" size={18} color="#DC2626" />
+                    </View>
+                    <Text className="text-xs font-semibold text-gray-500">High Urgency</Text>
+                    <ScaledText baseSize={22} className="font-bold text-gray-900 mt-1">{countsByUrgency['High'] || 0}</ScaledText>
                   </View>
                 </View>
               </View>
@@ -252,8 +374,8 @@ export default function AdminOverviewScreen() {
                 )}
               </View>
 
-              {/* Recent Reports */}
-              <ScaledText baseSize={16} className="font-semibold text-gray-900 mb-2">Recent Reports</ScaledText>
+              {/* Recent Activity */}
+              <ScaledText baseSize={16} className="font-semibold text-gray-900 mb-2">Recent Activity</ScaledText>
               {recent.length === 0 ? (
                 <View className="bg-white rounded-2xl border border-gray-100 items-center shadow-sm" style={{ padding: s(24) }}>
                   <ScaledText baseSize={13} className="text-gray-500">No recent reports.</ScaledText>
