@@ -1,11 +1,45 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { api } from '../api/client';
 import { getSignedAvatarUrl } from '../lib/supabase';
 import { sessionManager } from '../utils/sessionManager';
 
 // Cache for signed URLs to avoid repeated network calls
 const urlCache = new Map<string, { url: string; expires: number }>();
 const CACHE_DURATION = 23 * 60 * 60 * 1000; // 23 hours (shorter than 24 hour expiry)
+
+// Function to register for push notifications and save the token
+async function registerForPushNotificationsAsync(userId: string) {
+  let token;
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      console.log('Failed to get push token for push notification!');
+      return;
+    }
+    token = (await Notifications.getExpoPushTokenAsync()).data;
+    console.log('Expo Push Token:', token);
+  } catch (error) {
+    console.error('Error getting a push token', error);
+    return;
+  }
+
+  if (token) {
+    try {
+      // Save the token to your backend using the new method
+      await api.users.storePushToken(userId, token);
+      console.log('Push token saved to backend');
+    } catch (error) {
+      console.error('Failed to save push token to backend', error);
+    }
+  }
+}
 
 interface User {
   id: string;
@@ -80,6 +114,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
           profile_pic: parsedUser.profile_pic || undefined
         };
         setUser(mappedUser);
+
+        // Register for push notifications on load
+        if (mappedUser.userid) { // Use the UUID 'userid' here
+          registerForPushNotificationsAsync(mappedUser.userid).catch(error => {
+            console.warn('Push notification registration failed on load:', error);
+          });
+        }
         
         // Lazy load signed URL in background for storage paths
         if (parsedUser.profile_pic && typeof parsedUser.profile_pic === 'string' && parsedUser.profile_pic.includes('/')) {
@@ -116,8 +157,14 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = useCallback(async (userData: User) => {
     try {
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
+      await AsyncStorage.setItem('userData', JSON.stringify(userData));
       setUser(userData);
+      // Register for push notifications
+      if (userData.userid) { // Use the UUID 'userid' here
+        registerForPushNotificationsAsync(userData.userid).catch(error => {
+          console.warn('Push notification registration failed:', error);
+        });
+      }
     } catch (error) {
       console.error('Error saving user:', error);
       throw error;

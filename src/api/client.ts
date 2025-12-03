@@ -49,7 +49,8 @@ export const api = {
         patient_status: reportData.patientStatus,
         description: reportData.description,
         uploaded_media: reportData.mediaUrls || [],
-        incident_datetime: new Date().toISOString()
+        incident_datetime: new Date().toISOString(),
+        status: 'PENDING' // Add default status
       });
       
       // Handle 429 rate limit error
@@ -89,6 +90,19 @@ export const api = {
       const { data, error } = await db.updateUser(id.toString(), safeUpdates);
       if (error) throw new Error(error.message);
       return data;
+    },
+
+    storePushToken: async (userId: string, token: string): Promise<void> => {
+      const { supabase } = await import('../lib/supabase');
+      const { error } = await supabase
+        .from('users')
+        .update({ expo_push_token: token })
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Failed to store push token:', error);
+        throw new Error(error.message);
+      }
     }
   }
 };
