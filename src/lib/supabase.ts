@@ -96,6 +96,7 @@ export interface Report {
   description: string;
   uploaded_media: string[];
   incident_datetime: string;
+  status: 'PENDING' | 'ACKNOWLEDGED' | 'ON_GOING' | 'RESOLVED' | 'DECLINED';
   created_at?: string;
   updated_at?: string;
 }

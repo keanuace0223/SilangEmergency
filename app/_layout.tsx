@@ -1,8 +1,12 @@
+// Disable expo-notifications auto-registration for Expo Go
+(global as any).__expo_notifications_autotoken_registration_disabled = true;
+
 import * as NavigationBar from 'expo-navigation-bar';
 import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from "react";
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
+import { NotificationProvider } from '../src/context/NotificationContext';
 import { SettingsProvider } from '../src/context/SettingsContext';
 import { SyncProvider } from '../src/context/SyncContext';
 import { UserProvider } from '../src/context/UserContext';
@@ -89,7 +93,9 @@ export default function RootLayout() {
       <AuthProvider>
         <UserProvider>
           <SyncProvider>
-            <RootNavigator />
+            <NotificationProvider>
+              <RootNavigator />
+            </NotificationProvider>
           </SyncProvider>
         </UserProvider>
       </AuthProvider>

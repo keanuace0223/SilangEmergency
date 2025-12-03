@@ -14,6 +14,7 @@ import { api } from '../../src/api/client'
 import { useSettings } from '../../src/context/SettingsContext'
 import { useSync } from '../../src/context/SyncContext'
 import { useUser } from '../../src/context/UserContext'
+import { Report, supabase } from '../../src/lib/supabase'
 
 const Reports = () => {
   const { textScale } = useSettings()
@@ -103,6 +104,24 @@ const Reports = () => {
     return s.slice(0, 4).toUpperCase()
   }
 
+  // Get status badge display info
+  const getStatusBadgeInfo = (status: string) => {
+    switch (status) {
+      case 'PENDING':
+        return { text: 'SENT', color: '#6B7280', backgroundColor: '#F3F4F6' };
+      case 'ACKNOWLEDGED':
+        return { text: 'RECEIVED', color: '#D97706', backgroundColor: '#FEF3C7' };
+      case 'ON_GOING':
+        return { text: 'RESPONDERS ON WAY', color: '#EA580C', backgroundColor: '#FFEDD5' };
+      case 'RESOLVED':
+        return { text: 'RESOLVED', color: '#16A34A', backgroundColor: '#DCFCE7' };
+      case 'DECLINED':
+        return { text: 'DECLINED', color: '#DC2626', backgroundColor: '#FEE2E2' };
+      default:
+        return { text: (status || 'N/A').toUpperCase(), color: '#6B7280', backgroundColor: '#F3F4F6' };
+    }
+  };
+
   // Fetch reports from API and offline storage
   const fetchReports = React.useCallback(async () => {
     try {
@@ -165,36 +184,41 @@ const Reports = () => {
 
   // Real-time updates via Supabase Realtime
   React.useEffect(() => {
-    if (!user?.id || !isOnline) return
+    if (!user?.id || !isOnline) return;
 
-    // Dynamic import to avoid circular dependencies
-    import('../../src/lib/supabase').then(({ supabase }) => {
-    
-      // Subscribe to INSERT and UPDATE events on reports table for this user
-      const channel = supabase
-        .channel('reports-changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*', // Listen to INSERT, UPDATE, DELETE
-            schema: 'public',
-            table: 'reports',
-            filter: `user_id=eq.${user.id}`, // Filter for this user's reports
-          },
-          (payload: any) => {
-            // Refresh reports when any change occurs
-            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-              fetchReports()
+    const channel = supabase
+      .channel('reports-changes')
+      .on(
+        'postgres_changes' as any,
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reports',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload: { new: Report, old: Report, eventType: string }) => {
+          setReports(currentReports => {
+            if (payload.eventType === 'INSERT') {
+              return [payload.new, ...currentReports];
             }
-          }
-        )
-        .subscribe()
+            if (payload.eventType === 'UPDATE') {
+              return currentReports.map(report => 
+                report.id === payload.new.id ? payload.new : report
+              );
+            }
+            if (payload.eventType === 'DELETE') {
+              return currentReports.filter(report => report.id !== payload.old.id);
+            }
+            return currentReports;
+          });
+        }
+      )
+      .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel)
-      }
-    })
-  }, [user?.id, isOnline, fetchReports])
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, isOnline]);
 
   // Open Add modal when navigated with ?openAdd=1
   React.useEffect(() => {
@@ -272,8 +296,8 @@ const Reports = () => {
   // Render report item
   const renderReportItem = ({ item }: { item: any }) => {
     const syncInfo = getSyncStatusInfo(item)
-    // Only show status tag for Vehicular Accident and Others incident types
     const statusInfo = getPatientStatusInfo(item.patient_status || 'No Patient');
+    const badgeInfo = getStatusBadgeInfo(item.status || 'PENDING');
     
     return (
       <TouchableOpacity
@@ -350,6 +374,17 @@ const Reports = () => {
 
             {/* Bottom row: status badge, location, sync */}
             <View className="mt-3 flex-row items-center justify-between">
+              <View
+                className="px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: badgeInfo.backgroundColor }}
+              >
+                <Caption
+                  className="font-semibold"
+                  style={{ color: badgeInfo.color, fontSize: 10 }}
+                >
+                  {badgeInfo.text}
+                </Caption>
+              </View>
               {statusInfo && (
                 <View
                   className="flex-row items-center px-2.5 py-1 rounded-full"
