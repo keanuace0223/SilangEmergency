@@ -4,7 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy'
 import * as ImagePicker from 'expo-image-picker'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Animated, Dimensions, KeyboardAvoidingView, Modal, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Alert, Animated, Dimensions, KeyboardAvoidingView, Modal, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import AppModal from '../../components/AppModal'
 import OptimizedProfilePicture from '../../components/OptimizedProfilePicture'
@@ -213,19 +213,18 @@ const Profile = () => {
         />
       }
     >
-      {/* Header Section */}
-      <View className={`bg-blue-500 pt-10 pb-10 px-4`}>
-        <View className="items-center">
-          {/* Profile Picture */}
-          <View className="mb-6">
-            <OptimizedProfilePicture
-              uri={avatarPreviewUrl || user.profile_pic}
-              size={112} // w-28 h-28 equivalent
-              className=""
-            />
-            {/* Edit avatar button */}
-            <TouchableOpacity
-              onPress={async () => {
+      {/* Identity Card */}
+      <View className="mx-5 mt-4 p-6 bg-white rounded-3xl shadow-sm border border-gray-100 items-center">
+        {/* Profile Picture */}
+        <View className="mb-4">
+          <OptimizedProfilePicture
+            uri={avatarPreviewUrl || user.profile_pic}
+            size={112} // w-28 h-28 equivalent
+            className=""
+          />
+          {/* Edit avatar button */}
+          <TouchableOpacity
+            onPress={async () => {
                 try {
                   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
                   if (perm.status !== 'granted') return
@@ -304,151 +303,170 @@ const Profile = () => {
                 <Ionicons name="trash" size={16} color="#FFFFFF" />
               </TouchableOpacity>
             )}
-      {/* Delete Avatar Confirmation Modal */}
-      <Modal
-        visible={showDeleteAvatarConfirm}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowDeleteAvatarConfirm(false)}
-      >
-        <View className="flex-1 justify-center items-center bg-black/50">
-          <View className="bg-white rounded-2xl px-6 py-7 mx-6 w-80 shadow-2xl">
-            <View className="items-center mb-5">
-              <View className="w-16 h-16 bg-red-100 rounded-full items-center justify-center mb-3">
-                <Ionicons name="trash" size={32} color="#EF4444" />
-              </View>
-              <Text className="font-bold text-gray-900 mb-2" style={{ fontSize: 18 }}>Remove profile photo?</Text>
-              <Text className="text-gray-600 text-center" style={{ fontSize: 14 }}>This will delete your current avatar from storage and clear it from your profile.</Text>
-            </View>
-            <View className="flex-row gap-4 mt-4">
-              <TouchableOpacity onPress={() => setShowDeleteAvatarConfirm(false)} className="flex-1 bg-gray-100 rounded-xl py-3 items-center">
-                <Text className="text-gray-700" style={{ fontSize: 16 }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={async () => {
-                  try {
-                    if (!user?.id) return
-                    // If local storage has a path, attempt to delete the file in storage
-                    const raw = await AsyncStorage.getItem('userData')
-                    const parsed = raw ? JSON.parse(raw) : {}
-                    const storagePath = getStoragePathFromValue(parsed?.profile_pic)
-                    if (storagePath) {
-                      try {
-                        const { error } = await deleteAvatar(storagePath)
-                        if (error) {
-                          console.warn('Delete avatar from storage failed', error)
-                          showInfoModal('Delete failed', 'Could not delete file from storage. It may be a permissions issue.', 'warning', '#EF4444')
+
+            {/* Delete Avatar Confirmation Modal */}
+            <Modal
+              visible={showDeleteAvatarConfirm}
+              transparent={true}
+              animationType="fade"
+              onRequestClose={() => setShowDeleteAvatarConfirm(false)}
+            >
+              <View className="flex-1 justify-center items-center bg-black/50">
+                <View className="bg-white rounded-2xl px-6 py-7 mx-6 w-80 shadow-2xl">
+                  <View className="items-center mb-5">
+                    <View className="w-16 h-16 bg-red-100 rounded-full items-center justify-center mb-3">
+                      <Ionicons name="trash" size={32} color="#EF4444" />
+                    </View>
+                    <Text className="font-bold text-gray-900 mb-2" style={{ fontSize: 18 }}>Remove profile photo?</Text>
+                    <Text className="text-gray-600 text-center" style={{ fontSize: 14 }}>This will delete your current avatar from storage and clear it from your profile.</Text>
+                  </View>
+                  <View className="flex-row gap-4 mt-4">
+                    <TouchableOpacity onPress={() => setShowDeleteAvatarConfirm(false)} className="flex-1 bg-gray-100 rounded-xl py-3 items-center">
+                      <Text className="text-gray-700" style={{ fontSize: 16 }}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={async () => {
+                        try {
+                          if (!user?.id) return
+                          // If local storage has a path, attempt to delete the file in storage
+                          const raw = await AsyncStorage.getItem('userData')
+                          const parsed = raw ? JSON.parse(raw) : {}
+                          const storagePath = getStoragePathFromValue(parsed?.profile_pic)
+                          if (storagePath) {
+                            try {
+                              const { error } = await deleteAvatar(storagePath)
+                              if (error) {
+                                console.warn('Delete avatar from storage failed', error)
+                                showInfoModal('Delete failed', 'Could not delete file from storage. It may be a permissions issue.', 'warning', '#EF4444')
+                              }
+                            } catch (e) {
+                              console.warn('Delete avatar from storage threw', e)
+                            }
+                          } else {
+                            console.warn('No valid storage path found for profile_pic; skipping storage delete')
+                          }
+                          await db.updateUser(String(user.id), { profile_pic: null } as any)
+                          const updated = { ...parsed, profile_pic: null }
+                          await AsyncStorage.setItem('userData', JSON.stringify(updated))
+                          await refreshUser()
+                          setAvatarPreviewUrl(null)
+                        } catch (e) {
+                          console.error('Profile photo removal failed', e)
+                        } finally {
+                          setShowDeleteAvatarConfirm(false)
                         }
-                      } catch (e) {
-                        console.warn('Delete avatar from storage threw', e)
-                      }
-                    } else {
-                      console.warn('No valid storage path found for profile_pic; skipping storage delete')
-                    }
-                    await db.updateUser(String(user.id), { profile_pic: null } as any)
-                    const updated = { ...parsed, profile_pic: null }
-                    await AsyncStorage.setItem('userData', JSON.stringify(updated))
-                    await refreshUser()
-                    setAvatarPreviewUrl(null)
-                  } catch (e) {
-                    console.error('Profile photo removal failed', e)
-                  } finally {
-                    setShowDeleteAvatarConfirm(false)
-                  }
-                }}
-                className="flex-1 bg-red-500 rounded-xl py-3 items-center"
-              >
-                <Text className="text-white" style={{ fontSize: 16 }}>Delete</Text>
-              </TouchableOpacity>
-            </View>
+                      }}
+                      className="flex-1 bg-red-500 rounded-xl py-3 items-center"
+                    >
+                      <Text className="text-white" style={{ fontSize: 16 }}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </Modal>
           </View>
-        </View>
-      </Modal>
-          </View>
-          
+
           {/* User Info */}
-          <View className="flex-1 items-center justify-center">
-          <Text className="text-white font-bold mb-2" style={{ fontSize: scaleFont(30) }}>{user.name}</Text>
-          <Text className="text-gray-200 mb-1 font-medium" style={{ fontSize: scaleFont(20) }}>{user.barangay_position}</Text>
-          <View className="flex-row items-center justify-center">
-            <Ionicons name="location" size={18} color="#E5E7EB" />
-            <Text className="text-gray-100 ml-2" style={{ fontSize: scaleFont(18) }}>{user.barangay}</Text>
+          <Text
+            className="text-2xl font-bold text-gray-900 mt-4 text-center"
+            style={{ fontSize: scaleFont(24) }}
+          >
+            {user.name}
+          </Text>
+
+          <View className="mt-2 px-4 py-1.5 rounded-full bg-blue-50">
+            <Text
+              className="text-sm font-semibold text-blue-600 text-center"
+              style={{ fontSize: scaleFont(14) }}
+            >
+              {user.barangay_position || 'Responder'}
+            </Text>
           </View>
+
+          <View className="flex-row items-center mt-2">
+            <Ionicons name="location" size={16} color="#6B7280" />
+            <Text
+              className="text-gray-500 text-sm ml-2"
+              style={{ fontSize: scaleFont(14) }}
+            >
+              {user.barangay || 'No barangay set'}
+            </Text>
           </View>
         </View>
-      </View>
 
-      {/* Removed Reports Filed card per request */}
-
-      {/* Menu Options */}
-      <View className="px-6 space-y-4">
-        <View className={`bg-white rounded-xl p-4 shadow-sm`}>
-          <TouchableOpacity onPress={() => {
+      {/* Menu Group */}
+      <View className="mx-5 mt-6 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        {/* Personal Information */}
+        <TouchableOpacity
+          onPress={() => {
             if (!user) return
             setEditName(user.name || '')
             setEditBarangay(user.barangay || '')
             setEditContactNumber((user as any).contact_number || '')
             setEditPosition((user.barangay_position as any) === 'Barangay Captain' || (user.barangay_position as any) === 'Councilor' ? user.barangay_position as any : '')
             setShowPersonalModal(true)
-          }} className="flex-row items-center justify-between py-3">
-            <View className="flex-row items-center">
-              <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center mr-4">
-                <Ionicons name="person-outline" size={18} color="#4A90E2" />
-              </View>
-              <View>
-                <Text className={`text-gray-900 font-medium`} style={{ fontSize: scaleFont(16) }}>Personal Information</Text>
-                <Text className={`text-gray-500`} style={{ fontSize: scaleFont(13) }}>Update your profile details</Text>
-              </View>
+          }}
+          className="flex-row items-center justify-between px-4 py-4"
+        >
+          <View className="flex-row items-center">
+            <View className="w-10 h-10 rounded-lg bg-blue-50 items-center justify-center mr-3">
+              <Ionicons name="person-outline" size={18} color="#2563EB" />
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-          </TouchableOpacity>
-        </View>
-
-        <View className={`bg-white rounded-xl p-4 shadow-sm`}>
-          <TouchableOpacity onPress={showSettings} className="flex-row items-center justify-between py-3">
-            <View className="flex-row items-center">
-              <View className="w-10 h-10 bg-green-100 rounded-full items-center justify-center mr-4">
-                <Ionicons name="settings-outline" size={18} color="#10B981" />
-              </View>
-              <View>
-                <Text className={`text-gray-900 font-medium`} style={{ fontSize: scaleFont(16) }}>Settings</Text>
-                <Text className={`text-gray-500`} style={{ fontSize: scaleFont(13) }}>App preferences and notifications</Text>
-              </View>
+            <View>
+              <Text className="text-gray-900 font-medium" style={{ fontSize: scaleFont(16) }}>Personal Information</Text>
+              <Text className="text-gray-400 text-xs" style={{ fontSize: scaleFont(12) }}>Update your profile details</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-          </TouchableOpacity>
-        </View>
-
-        <View className={`bg-white rounded-xl p-4 shadow-sm`}>
-          <TouchableOpacity onPress={() => setShowAboutModal(true)} className="flex-row items-center justify-between py-3">
-            <View className="flex-row items-center">
-              <View className="w-10 h-10 bg-purple-100 rounded-full items-center justify-center mr-4">
-                <Ionicons name="information-circle-outline" size={18} color="#8B5CF6" />
-              </View>
-              <View>
-                <Text className={`text-gray-900 font-medium`} style={{ fontSize: scaleFont(16) }}>About</Text>
-                <Text className={`text-gray-500`} style={{ fontSize: scaleFont(13) }}>App version and legal information</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity onPress={showLogoutConfirmation} className={`bg-white rounded-xl p-4 shadow-sm mt-4 border border-gray-100`}>
-          <View className="flex-row items-center justify-between py-3">
-            <View className="flex-row items-center">
-              <View className="w-12 h-12 bg-red-500 rounded-full items-center justify-center mr-4 shadow-sm">
-                <Ionicons name="log-out-outline" size={22} color="white" />
-              </View>
-              <View>
-                <Text className={`text-gray-900 font-semibold`} style={{ fontSize: scaleFont(18) }}>Logout</Text>
-                <Text className={`text-gray-500`} style={{ fontSize: scaleFont(13) }}>Sign out of your account</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
           </View>
+          <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+        </TouchableOpacity>
+
+        <View className="h-px bg-gray-100 mx-4" />
+
+        {/* Settings */}
+        <TouchableOpacity
+          onPress={showSettings}
+          className="flex-row items-center justify-between px-4 py-4"
+        >
+          <View className="flex-row items-center">
+            <View className="w-10 h-10 rounded-lg bg-green-50 items-center justify-center mr-3">
+              <Ionicons name="settings-outline" size={18} color="#10B981" />
+            </View>
+            <View>
+              <Text className="text-gray-900 font-medium" style={{ fontSize: scaleFont(16) }}>Settings</Text>
+              <Text className="text-gray-400 text-xs" style={{ fontSize: scaleFont(12) }}>App preferences and notifications</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+        </TouchableOpacity>
+
+        <View className="h-px bg-gray-100 mx-4" />
+
+        {/* About */}
+        <TouchableOpacity
+          onPress={() => setShowAboutModal(true)}
+          className="flex-row items-center justify-between px-4 py-4"
+        >
+          <View className="flex-row items-center">
+            <View className="w-10 h-10 rounded-lg bg-purple-50 items-center justify-center mr-3">
+              <Ionicons name="information-circle-outline" size={18} color="#8B5CF6" />
+            </View>
+            <View>
+              <Text className="text-gray-900 font-medium" style={{ fontSize: scaleFont(16) }}>About</Text>
+              <Text className="text-gray-400 text-xs" style={{ fontSize: scaleFont(12) }}>App version and legal information</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
         </TouchableOpacity>
       </View>
+
+      {/* Logout Button */}
+      <TouchableOpacity
+        onPress={showLogoutConfirmation}
+        className="mx-5 mt-6 mb-12 p-4 bg-red-50 border border-red-100 rounded-xl flex-row justify-center items-center"
+      >
+        <Ionicons name="log-out-outline" size={18} color="#DC2626" style={{ marginRight: 8 }} />
+        <Text className="text-red-600 font-semibold" style={{ fontSize: scaleFont(16) }}>Logout</Text>
+      </TouchableOpacity>
 
       {/* Bottom Spacing */}
       <View className="h-8" />
@@ -521,7 +539,7 @@ const Profile = () => {
             </View>
 
             {/* Additional Settings Placeholder */}
-            <TouchableOpacity onPress={() => showInfoModal('Coming Soon', 'This feature will be available in a future update.', 'information-circle', '#2563EB')} className="flex-row items-center justify-between py-4">
+            <TouchableOpacity onPress={() => Alert.alert('Coming Soon', 'This feature is under development.')} className="flex-row items-center justify-between py-4">
               <View className="flex-row items-center">
                 <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center mr-4">
                   <Ionicons name="notifications-outline" size={20} color="#4A90E2" />
@@ -534,7 +552,7 @@ const Profile = () => {
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => showInfoModal('Coming Soon', 'This feature will be available in a future update.', 'information-circle', '#2563EB')} className="flex-row items-center justify-between py-4">
+            <TouchableOpacity onPress={() => Alert.alert('Coming Soon', 'This feature is under development.')} className="flex-row items-center justify-between py-4">
               <View className="flex-row items-center">
                 <View className="w-10 h-10 bg-purple-100 rounded-full items-center justify-center mr-4">
                   <Ionicons name="shield-outline" size={20} color="#8B5CF6" />
@@ -608,53 +626,48 @@ const Profile = () => {
                   keyboardShouldPersistTaps="handled"
                   bounces={false}
                 >
-                  <Text className="mb-1 text-gray-600" style={{ fontSize: scaleFont(13) }}>Full Name</Text>
+                  <Text className="mb-1 text-gray-600" style={{ fontSize: scaleFont(12) }}>Full Name</Text>
                   <TextInput 
                     value={editName} 
                     onChangeText={setEditName} 
                     placeholder="Enter your name" 
-                    className="border rounded-xl px-4 py-4 mb-4 border-gray-300 bg-white text-black" 
+                    className="border rounded-xl px-3 py-3 mb-3 border-gray-300 bg-white text-black" 
                     placeholderTextColor="#8E8E93" 
-                    style={{ fontSize: scaleFont(16) }} 
+                    style={{ fontSize: scaleFont(15) }} 
                   />
 
-                  <Text className="mb-1 text-gray-600" style={{ fontSize: scaleFont(13) }}>Mobile Number</Text>
+                  <Text className="mb-1 text-gray-600" style={{ fontSize: scaleFont(12) }}>Mobile Number</Text>
                   <TextInput 
                     value={editContactNumber} 
                     onChangeText={setEditContactNumber} 
                     placeholder="e.g. 0912 345 6789" 
                     keyboardType="phone-pad"
-                    className="border rounded-xl px-4 py-4 mb-4 border-gray-300 bg-white text-black" 
+                    className="border rounded-xl px-3 py-3 mb-3 border-gray-300 bg-white text-black" 
                     placeholderTextColor="#8E8E93" 
-                    style={{ fontSize: scaleFont(16) }} 
+                    style={{ fontSize: scaleFont(15) }} 
                   />
 
-                  <Text className="mb-1 text-gray-600" style={{ fontSize: scaleFont(13) }}>Barangay</Text>
+                  <Text className="mb-1 text-gray-600" style={{ fontSize: scaleFont(12) }}>Barangay</Text>
                   <TextInput 
                     value={editBarangay} 
                     editable={false} 
-                    className="border rounded-xl px-4 py-4 mb-4 border-gray-200 bg-gray-50 text-black" 
-                    style={{ fontSize: scaleFont(16) }} 
+                    className="border rounded-xl px-3 py-3 mb-3 border-gray-200 bg-gray-50 text-black" 
+                    style={{ fontSize: scaleFont(15) }} 
                   />
 
-                  <Text className="mb-1 text-gray-600" style={{ fontSize: scaleFont(13) }}>Position</Text>
+                  <Text className="mb-1 text-gray-600" style={{ fontSize: scaleFont(12) }}>Position</Text>
                   <View className="relative mb-6" style={{ zIndex: 2 }}>
-                    <TouchableOpacity onPress={() => setShowPositionMenu(v => !v)} className="border rounded-xl px-4 py-4 border-gray-300 bg-white">
+                    <View className="border rounded-xl px-3 py-3 border-gray-300 bg-gray-50">
                       <View className="flex-row items-center justify-between">
-                        <Text className={`${editPosition ? 'text-black' : 'text-gray-400'}`} style={{ fontSize: scaleFont(16) }}>{editPosition || 'Select position'}</Text>
-                        <Ionicons name={showPositionMenu ? 'chevron-up' : 'chevron-down'} size={18} color="#666" />
+                        <Text
+                          className="text-gray-500"
+                          style={{ fontSize: scaleFont(15) }}
+                        >
+                          {editPosition || 'Position is set by admin'}
+                        </Text>
+                        <Ionicons name="lock-closed-outline" size={16} color="#9CA3AF" />
                       </View>
-                    </TouchableOpacity>
-                    {showPositionMenu && (
-                      <View className="absolute left-0 right-0 top-16 rounded-xl overflow-hidden bg-white border border-gray-300" style={{ elevation: 10, zIndex: 1000 }}>
-                        {(['Barangay Captain','Councilor'] as const).map(pos => (
-                          <TouchableOpacity key={pos} className="px-4 py-4 flex-row items-center active:bg-gray-50" onPress={() => { setEditPosition(pos); setShowPositionMenu(false) }}>
-                            <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-                            <Text className="ml-3 text-black" style={{ fontSize: scaleFont(16) }}>{pos}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
+                    </View>
                   </View>
                 </ScrollView>
 

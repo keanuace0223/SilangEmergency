@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons'
 import * as Location from 'expo-location'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import React from 'react'
 import { ActivityIndicator, DeviceEventEmitter, Dimensions, FlatList, Image, Linking, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 import ScaledText from '../../components/ScaledText'
-import { Body, Subtitle, Title } from '../../components/Typography'
+import { Subtitle, Title } from '../../components/Typography'
 import { images } from '../../constants/images'
 import { api } from '../../src/api/client'
 import { useSettings } from '../../src/context/SettingsContext'
@@ -106,13 +106,20 @@ const Home = () => {
   }, [])
 
 
-  React.useEffect(() => { if (user?.id) { fetchReports() } }, [fetchReports, user?.id])
+  // Refresh reports and location whenever Home tab gains focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user?.id) {
+        fetchReports()
+      }
+      getCurrentLocation()
+    }, [user?.id, fetchReports, getCurrentLocation])
+  )
 
   // When user object changes, no stale header values
   React.useEffect(() => {
-    // no-op, triggers re-render; could also refetch stats here
+    // no-op, triggers re-render; could also refetch stats here if needed
   }, [user])
-  React.useEffect(() => { getCurrentLocation() }, [getCurrentLocation])
 
   const withTimeout = React.useCallback(<T,>(promise: Promise<T>, ms: number): Promise<T | void> => {
     return Promise.race([
@@ -389,54 +396,57 @@ const Home = () => {
             </View>
           </View>
         </View>
-        {/* Header with user info */}
+        {/* Header with user info - Location-First Profile Card */}
         <View className="px-5 pt-4" style={{ paddingHorizontal: s(20), paddingTop: s(16) }}>
           <View
-            className="bg-white rounded-2xl border border-gray-100 shadow-sm"
-            style={{ padding: s(16) }}
+            className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5"
           >
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center flex-1">
-                <View
-                  className="w-16 h-16 rounded-full overflow-hidden bg-gray-100"
-                  style={{ marginRight: s(16), width: s(64), height: s(64) }}
-                >
-                  {user?.profile_pic ? (
-                    <Image
-                      source={{ uri: user.profile_pic }}
-                      className="w-full h-full"
-                      resizeMode="cover"
-                      onError={() => {
-                        if (__DEV__) console.warn('Profile picture failed to load:', user.profile_pic);
-                      }}
-                    />
-                  ) : (
-                    <View className="flex-1 items-center justify-center">
-                      <Ionicons name="person" size={20} color="#4A90E2" />
-                    </View>
-                  )}
-                </View>
-                <View className="flex-1">
-                  <Title style={{ color: '#111827', marginBottom: 4 }} numberOfLines={1}>
-                    {user?.name || user?.userid || 'User'}
-                  </Title>
-                  <Body style={{ color: '#6B7280' }} numberOfLines={1}>
-                    {user?.barangay_position || 'Responder'}
-                  </Body>
-                </View>
-              </View>
+            <View className="flex-row items-center">
+              {/* Avatar */}
               <View
-                className="ml-3 px-3 py-1 rounded-full"
-                style={{ backgroundColor: '#DBEAFE' }}
+                className="w-16 h-16 rounded-full bg-gray-100 overflow-hidden border border-gray-100"
+                style={{ marginRight: s(16), width: s(64), height: s(64) }}
               >
+                {user?.profile_pic ? (
+                  <Image
+                    source={{ uri: user.profile_pic }}
+                    className="w-full h-full"
+                    resizeMode="cover"
+                    onError={() => {
+                      if (__DEV__) console.warn('Profile picture failed to load:', user.profile_pic)
+                    }}
+                  />
+                ) : (
+                  <View className="flex-1 items-center justify-center">
+                    <Ionicons name="person" size={20} color="#4A90E2" />
+                  </View>
+                )}
+              </View>
+
+              {/* Location-first text column */}
+              <View className="flex-1 ml-4">
+                {/* Barangay row */}
+                <View className="flex-row items-center mb-1">
+                  <Ionicons name="location-sharp" size={12} color="#6B7280" />
+                  <Text
+                    className="ml-1 text-xs font-semibold text-gray-500 tracking-wider"
+                    style={{ textTransform: 'uppercase' }}
+                  >
+                    {user?.barangay ? `Barangay ${user.barangay}` : 'Barangay —'}
+                  </Text>
+                </View>
+
+                {/* Name */}
                 <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '600',
-                    color: '#1D4ED8',
-                  }}
+                  className="text-xl font-bold text-gray-900"
+                  style={{ lineHeight: 24 }}
                 >
-                  {user?.barangay ? `Barangay ${user.barangay}` : 'Barangay —'}
+                  {user?.name || user?.userid || 'User'}
+                </Text>
+
+                {/* Position */}
+                <Text className="text-sm font-medium text-blue-600 mt-0.5">
+                  {user?.barangay_position || 'Responder'}
                 </Text>
               </View>
             </View>

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons'
 import * as Contacts from 'expo-contacts'
 import * as ImagePicker from 'expo-image-picker'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import React from 'react'
 import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -60,6 +60,8 @@ const CreateReport = () => {
   const [contactSearch, setContactSearch] = React.useState('')
   const [isLoadingContacts, setIsLoadingContacts] = React.useState(false)
 
+  const [mediaModalVisible, setMediaModalVisible] = React.useState(false)
+
   const [modalVisible, setModalVisible] = React.useState(false)
   const [modalTitle, setModalTitle] = React.useState('')
   const [modalMessage, setModalMessage] = React.useState('')
@@ -106,17 +108,31 @@ const CreateReport = () => {
     }
   }, [user?.id]);
 
-  React.useEffect(() => {
-    if (user?.id) {
-      fetchLimitStatus();
-    }
-  }, [user?.id, fetchLimitStatus]);
+  useFocusEffect(
+    React.useCallback(() => {
+      // Reset core form and modal state whenever this screen gains focus
+      resetForm()
 
-  React.useEffect(() => {
-    if (user?.contact_number) {
-      setContactNumber(prev => prev || user.contact_number || '');
-    }
-  }, [user?.contact_number]);
+      // Ensure the user always starts at the top of the form
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ y: 0, animated: false })
+      }
+
+      // Auto-fill contact number from the latest profile data
+      if (user?.contact_number) {
+        setContactNumber(user.contact_number || '')
+      }
+
+      // Refresh limit status from the server on every focus
+      if (user?.id) {
+        void fetchLimitStatus()
+      }
+
+      return () => {
+        // No-op cleanup
+      }
+    }, [user?.id, user?.contact_number, fetchLimitStatus])
+  )
 
   const formatContactNumberFromContact = (raw: string) => {
     if (!raw) return ''
@@ -199,6 +215,13 @@ const CreateReport = () => {
     setSelectedLocation(null)
     setOthersSpecification('')
     setHasPatient(false)
+     setIsOptimizingImages(false)
+     setShowConfirmSubmit(false)
+     setShowConfirmDraft(false)
+     setShowContactModal(false)
+     setShowLocationPicker(false)
+     setModalVisible(false)
+     setMediaModalVisible(false)
   }
 
   const handleClose = () => {
@@ -360,7 +383,7 @@ const CreateReport = () => {
           showModal('Report submitted', 'Your report has been submitted successfully.', 'checkmark-circle', '#16A34A')
           setTimeout(() => {
             resetForm()
-            router.back()
+            router.replace('/(tabs)/reports')
           }, 1500)
         } catch (error: any) {
           // Handle 429 rate limit error
@@ -424,7 +447,7 @@ const CreateReport = () => {
       showModal('Report saved', message, 'checkmark-circle', '#16A34A')
       setTimeout(() => {
         resetForm()
-        router.back()
+        router.replace('/(tabs)/reports')
       }, 1500)
     } catch (error) {
       console.error('Error saving offline report:', error)
@@ -579,36 +602,14 @@ const CreateReport = () => {
     }
   }
 
-  const pickMedia = () => {
-    showModal(
-      'Add photos',
-      'Choose an option',
-      'information-circle',
-      '#2563EB',
-      [
-        {
-          label: 'Take Photo',
-          variant: 'primary',
-          onPress: () => {
-            setModalVisible(false)
-            void handleTakePhoto()
-          },
-        },
-        {
-          label: 'Choose from Gallery',
-          variant: 'secondary',
-          onPress: () => {
-            setModalVisible(false)
-            void handlePickFromGallery()
-          },
-        },
-        {
-          label: 'Cancel',
-          variant: 'secondary',
-          onPress: () => setModalVisible(false),
-        },
-      ]
-    )
+  const handleCameraLaunch = async () => {
+    setMediaModalVisible(false)
+    await handleTakePhoto()
+  }
+
+  const handleGalleryLaunch = async () => {
+    setMediaModalVisible(false)
+    await handlePickFromGallery()
   }
 
   const handleDeleteMedia = (index: number) => {
@@ -939,7 +940,7 @@ const CreateReport = () => {
               ))}
             </View>
             <TouchableOpacity 
-              onPress={pickMedia} 
+              onPress={() => setMediaModalVisible(true)} 
               disabled={isOptimizingImages}
               className={`self-start px-6 py-3 rounded-lg ${isOptimizingImages ? 'bg-gray-200' : 'bg-gray-100'}`}
             >
@@ -1126,6 +1127,51 @@ const CreateReport = () => {
                   style={{ maxHeight: 360 }}
                 />
               )}
+            </View>
+          </View>
+        </Modal>
+      )}
+      
+      {/* Media Source Selection Modal */}
+      {mediaModalVisible && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setMediaModalVisible(false)}
+        >
+          <View className="flex-1 items-center justify-center bg-black/50">
+            <View className="bg-white rounded-2xl p-6 w-80">
+              <ScaledText baseSize={18} className="font-bold text-blue-500 text-center mb-4">Add Photo</ScaledText>
+
+              <TouchableOpacity
+                onPress={handleCameraLaunch}
+                className="flex-row items-center justify-center bg-gray-100 rounded-xl py-3 mb-3"
+              >
+                <Ionicons name="camera" size={20} color="#111827" style={{ marginRight: 8 }} />
+                <ScaledText baseSize={16} className="font-semibold text-gray-900">
+                  Take Photo
+                </ScaledText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleGalleryLaunch}
+                className="flex-row items-center justify-center bg-gray-100 rounded-xl py-3 mb-4"
+              >
+                <Ionicons name="images" size={20} color="#111827" style={{ marginRight: 8 }} />
+                <ScaledText baseSize={16} className="font-semibold text-gray-900">
+                  Choose from Gallery
+                </ScaledText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setMediaModalVisible(false)}
+                className="items-center pt-1"
+              >
+                <ScaledText baseSize={14} className="font-semibold text-gray-500">
+                  Cancel
+                </ScaledText>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>

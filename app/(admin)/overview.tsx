@@ -151,7 +151,7 @@ export default function AdminOverviewScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
         >
           {/* Header mirror (inside scroll, not sticky) */}
-          <View className="bg-white px-6 py-6 border border-gray-100 rounded-2xl mb-4">
+          <View className="bg-white px-6 py-6 border border-gray-100 rounded-2xl mb-4 shadow-sm">
             <View className="flex-row items-center">
               <Image source={images.logo} style={{ width: Math.round(70 * Math.min(textScale, 1.25)), height: Math.round(70 * Math.min(textScale, 1.25)), resizeMode: 'contain', marginRight: s(20) }} />
               <View>
@@ -163,8 +163,11 @@ export default function AdminOverviewScreen() {
 
           {/* Admin info card (mirror of user card) */}
           <View className="px-1 pb-2">
-            <View className="bg-[#3B82F6] rounded-2xl border border-gray-100 p-4 flex-row items-center">
-              <View className="w-20 h-20 rounded-full overflow-hidden bg-gray-100 mr-6">
+            <View className="bg-white rounded-2xl border border-gray-100 p-4 flex-row items-center shadow-sm">
+              <View className="w-12 h-12 rounded-full bg-blue-50 items-center justify-center mr-4">
+                <Ionicons name="shield-checkmark" size={22} color="#2563EB" />
+              </View>
+              <View className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 mr-4">
                 {user?.profile_pic ? (
                   <Image source={{ uri: user.profile_pic }} className="w-full h-full" resizeMode="cover" />
                 ) : (
@@ -174,37 +177,55 @@ export default function AdminOverviewScreen() {
                 )}
               </View>
               <View className="flex-1">
-                <ScaledText baseSize={18} className="font-bold" style={{ color: '#fff' }}>{user?.name || 'Admin'}</ScaledText>
-                <Text style={{ color: '#E5E7EB', marginTop: 2 }} numberOfLines={1}>Barangay: <Text className="font-medium">{user?.barangay || '—'}</Text></Text>
-                <Text style={{ color: '#E5E7EB' }} numberOfLines={1}>Position: <Text className="font-medium">{user?.barangay_position || '—'}</Text></Text>
+                <ScaledText baseSize={18} className="font-bold text-gray-900">{user?.name || 'Admin'}</ScaledText>
+                <Text style={{ color: '#4B5563', marginTop: 2 }} numberOfLines={1}>Barangay: <Text className="font-medium">{user?.barangay || '—'}</Text></Text>
+                <Text style={{ color: '#4B5563' }} numberOfLines={1}>Position: <Text className="font-medium">{user?.barangay_position || '—'}</Text></Text>
               </View>
             </View>
           </View>
 
           {stats && (
             <View>
-              {/* Overview stats (mirroring style) */}
-              <View className="flex-row justify-between mb-3">
-                <View className="flex-1 rounded-xl" style={{ backgroundColor: '#3B82F6', padding: s(12), marginRight: s(8) }}>
-                  <ScaledText baseSize={12} style={{ color: '#FFFFFF' }}>Total Reports</ScaledText>
-                  <ScaledText baseSize={22} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{stats.totalReports}</ScaledText>
+              {/* Overview stats */}
+              <View className="flex-row mb-4">
+                <View className="flex-1 bg-white rounded-xl border border-gray-100 mr-2 px-4 py-3 shadow-sm">
+                  <View className="flex-row items-center justify-between">
+                    <View className="flex-row items-center">
+                      <View className="w-9 h-9 rounded-full bg-blue-50 items-center justify-center mr-3">
+                        <Ionicons name="bar-chart" size={18} color="#2563EB" />
+                      </View>
+                      <ScaledText baseSize={12} className="text-gray-600">Total Reports</ScaledText>
+                    </View>
+                    <ScaledText baseSize={22} className="font-bold text-gray-900">{stats.totalReports}</ScaledText>
+                  </View>
                 </View>
-                <View className="flex-1 rounded-xl" style={{ backgroundColor: '#10B981', padding: s(12), marginLeft: s(8) }}>
-                  <ScaledText baseSize={12} style={{ color: '#FFFFFF' }}>Total Users</ScaledText>
-                  <ScaledText baseSize={22} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{stats.totalUsers}</ScaledText>
+                <View className="flex-1 bg-white rounded-xl border border-gray-100 ml-2 px-4 py-3 shadow-sm">
+                  <View className="flex-row items-center justify-between">
+                    <View className="flex-row items-center">
+                      <View className="w-9 h-9 rounded-full bg-emerald-50 items-center justify-center mr-3">
+                        <Ionicons name="people" size={18} color="#059669" />
+                      </View>
+                      <ScaledText baseSize={12} className="text-gray-600">Total Users</ScaledText>
+                    </View>
+                    <ScaledText baseSize={22} className="font-bold text-gray-900">{stats.totalUsers}</ScaledText>
+                  </View>
                 </View>
               </View>
 
-              {/* Reports by Incident Type (mirror tabs/index) */}
-              <View style={{ marginTop: s(8), marginBottom: s(8) }}>
+              {/* Reports by Incident Type */}
+              <View style={{ marginTop: s(4), marginBottom: s(8) }}>
                 <ScaledText baseSize={13} className="font-semibold text-gray-800 mb-2">Reports by Incident Type</ScaledText>
                 <View className="flex-row flex-wrap -mx-1">
                   {incidentEntries.map(([type, count]: [string, number]) => (
                     <View key={type} className="w-1/2 px-1 mb-2">
-                      <View className="rounded-xl" style={{ backgroundColor: '#3B82F6E6', padding: s(12) }}>
-                        <Ionicons name="information-circle" size={18} color="#FFFFFF" />
-                        <ScaledText baseSize={12} className="mt-1" style={{ color: '#FFFFFF' }} numberOfLines={1}>{type}</ScaledText>
-                        <ScaledText baseSize={20} className="font-bold mt-1" style={{ color: '#FFFFFF' }}>{count}</ScaledText>
+                      <View className="bg-white rounded-xl border border-gray-100 px-3 py-3 shadow-sm flex-row items-center justify-between">
+                        <View className="flex-row items-center flex-1 pr-2">
+                          <View className="w-8 h-8 rounded-full bg-blue-50 items-center justify-center mr-2">
+                            <Ionicons name="information-circle" size={18} color="#2563EB" />
+                          </View>
+                          <ScaledText baseSize={12} className="text-gray-800" numberOfLines={1}>{type}</ScaledText>
+                        </View>
+                        <ScaledText baseSize={18} className="font-bold text-gray-900">{count}</ScaledText>
                       </View>
                     </View>
                   ))}
@@ -216,7 +237,7 @@ export default function AdminOverviewScreen() {
 
               {/* Users by Barangay */}
               <ScaledText baseSize={14} className="font-semibold text-gray-900 mb-2">Users by Barangay</ScaledText>
-              <View className="bg-white rounded-xl border border-gray-100 mb-4">
+              <View className="bg-white rounded-xl border border-gray-100 mb-4 shadow-sm">
                 {stats.usersByBarangay.length === 0 ? (
                   <View className="items-center py-6">
                     <ScaledText baseSize={13} className="text-gray-500">No data</ScaledText>
@@ -234,7 +255,7 @@ export default function AdminOverviewScreen() {
               {/* Recent Reports */}
               <ScaledText baseSize={16} className="font-semibold text-gray-900 mb-2">Recent Reports</ScaledText>
               {recent.length === 0 ? (
-                <View className="bg-white rounded-2xl border border-gray-100 items-center" style={{ padding: s(24) }}>
+                <View className="bg-white rounded-2xl border border-gray-100 items-center shadow-sm" style={{ padding: s(24) }}>
                   <ScaledText baseSize={13} className="text-gray-500">No recent reports.</ScaledText>
                 </View>
               ) : (

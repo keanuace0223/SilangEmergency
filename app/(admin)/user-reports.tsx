@@ -200,7 +200,7 @@ export default function AdminUserReportsScreen() {
     const statusInfo = shouldShowStatus ? getPatientStatusInfo(item.patient_status || 'No Patient') : null;
     
     return (
-      <TouchableOpacity activeOpacity={0.9} className="bg-white rounded-2xl border border-gray-100 p-4 mb-3" onPress={() => { setSelectedReport(item); setShowDetail(true); }} style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 10 }}>
+      <TouchableOpacity activeOpacity={0.9} className="bg-white rounded-xl border border-gray-100 p-4 mb-3 shadow-sm" onPress={() => { setSelectedReport(item); setShowDetail(true); }}>
         <View className="flex-row">
           <View className="w-12 h-12 rounded-xl bg-white items-center justify-center mr-4 shadow-sm">
             <Ionicons name={getIncidentIcon(item.incident_type)} size={24} color={getIncidentColor(item.incident_type)} />

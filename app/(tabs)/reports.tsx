@@ -154,11 +154,6 @@ const Reports = () => {
     }
   }
 
-  // Load reports on component mount
-  React.useEffect(() => {
-    if (user?.id) { fetchReports() }
-  }, [fetchReports, user?.id])
-
   // Auto-refresh when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {

@@ -285,7 +285,7 @@ export default function AdminUsersScreen() {
             <Text className="text-center text-gray-500">No users found.</Text>
           ) : (
             users.map((item) => (
-              <View key={item.id} className="bg-white rounded-2xl border border-gray-100 p-4 mb-3" style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 10 }}>
+              <View key={item.id} className="bg-white rounded-xl border border-gray-100 p-4 mb-3 shadow-sm">
                 <View className="flex-row items-center justify-between">
                   <View style={{ flex: 1, paddingRight: 12 }}>
                     <ScaledText baseSize={14} className="font-semibold text-gray-900">{item.name || 'Unnamed'}</ScaledText>
@@ -294,14 +294,18 @@ export default function AdminUsersScreen() {
                       <Text className="text-xs text-gray-500 mt-1">Reports: {(item as any).reportCount}</Text>
                     ) : null}
                   </View>
-                  <View className="flex-row gap-2 items-center">
-                    <TouchableOpacity onPress={() => setConfirmUser(item)} className="px-3 py-2 rounded-lg bg-gray-500 flex-row items-center">
-                      <Ionicons name="refresh" size={16} color="#fff" />
-                      <Text className="text-white font-semibold ml-2">Reset Limit</Text>
+                  <View className="flex-row items-center gap-2">
+                    <TouchableOpacity
+                      onPress={() => router.push({ pathname: '/(admin)/user-reports', params: { userId: item.id } })}
+                      className="w-9 h-9 rounded-full bg-blue-50 items-center justify-center border border-blue-100"
+                    >
+                      <Ionicons name="document-text" size={18} color="#2563EB" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => router.push({ pathname: '/(admin)/user-reports', params: { userId: item.id } })} className="px-3 py-2 rounded-lg bg-[#4A90E2] flex-row items-center">
-                      <Ionicons name="document-text" size={16} color="#fff" />
-                      <Text className="text-white font-semibold ml-2">View Reports</Text>
+                    <TouchableOpacity
+                      onPress={() => setConfirmUser(item)}
+                      className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center border border-gray-200"
+                    >
+                      <Ionicons name="refresh" size={18} color="#4B5563" />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleForceLogout(item)}
