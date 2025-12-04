@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Silang Emergency App",
-    "slug": "silang_emergency",
+    "slug": "silangemergencyapp",
     "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/Logo.png",
@@ -18,6 +18,7 @@
     },
     "android": {
       "package": "com.silang.emergency",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -53,7 +54,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "8685a63a-7826-462f-a4cb-c2ef9d6f4492"
+        "projectId": "eafd0079-99c2-4310-9aea-5a396a2f41ed"
       }
     }
   }

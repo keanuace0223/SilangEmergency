@@ -10,6 +10,38 @@ const NotificationContext = createContext({});
 export const NotificationProvider = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
   const appState = useRef(AppState.currentState);
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
+
+  useEffect(() => {
+    // Set how notifications are handled when the app is in the foreground
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+        shouldShowBanner: true, // For older iOS versions
+        shouldShowList: true,   // For older iOS versions
+      }),
+    });
+
+    // This listener is fired whenever a notification is received while the app is running
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log('--- FOREGROUND NOTIFICATION RECEIVED ---');
+      console.log(JSON.stringify(notification.request.content.data, null, 2));
+    });
+
+    // This listener is fired whenever a user taps on or interacts with a notification
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('--- NOTIFICATION TAPPED ---');
+      console.log(JSON.stringify(response.notification.request.content.data, null, 2));
+    });
+
+    return () => {
+      notificationListener.current?.remove();
+      responseListener.current?.remove();
+    };
+  }, []);
 
   useEffect(() => {
     registerForPushNotificationsAsync();
@@ -51,6 +83,13 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     if (!Constants.isDevice) {
       return;
     }
+
+    // Skip notification permission flow entirely in Expo Go to avoid remote push errors
+    if (Constants.appOwnership === 'expo') {
+      return;
+    }
+
+    const Notifications = await import('expo-notifications');
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
@@ -58,12 +97,18 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
       finalStatus = status;
     }
     if (finalStatus !== 'granted') {
-      Alert.alert('Permission Denied', 'Failed to get push token for push notification!');
+      Alert.alert('Permission Denied', 'Failed to get notification permissions!');
       return;
     }
   }
 
   async function schedulePushNotification(status: 'PENDING' | 'ACKNOWLEDGED' | 'ON_GOING' | 'RESOLVED' | 'DECLINED') {
+    // Local notifications are also not needed in Expo Go for server-side status changes
+    if (Constants.appOwnership === 'expo') {
+      return;
+    }
+
+    const Notifications = await import('expo-notifications');
     await Notifications.scheduleNotificationAsync({
       content: {
         title: "Report Update",

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { getSignedAvatarUrl } from '../lib/supabase';
@@ -11,8 +11,15 @@ const CACHE_DURATION = 23 * 60 * 60 * 1000; // 23 hours (shorter than 24 hour ex
 
 // Function to register for push notifications and save the token
 async function registerForPushNotificationsAsync(userId: string) {
+  // Expo Go no longer supports remote push; skip token registration there
+  if (Constants.appOwnership === 'expo') {
+    console.warn('Skipping push token registration in Expo Go. Use a development build to test push notifications.');
+    return;
+  }
+
   let token;
   try {
+    const Notifications = await import('expo-notifications');
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
@@ -116,8 +123,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(mappedUser);
 
         // Register for push notifications on load
-        if (mappedUser.userid) { // Use the UUID 'userid' here
-          registerForPushNotificationsAsync(mappedUser.userid).catch(error => {
+        if (mappedUser.id) { // Use the UUID here
+          registerForPushNotificationsAsync(mappedUser.id).catch(error => {
             console.warn('Push notification registration failed on load:', error);
           });
         }
@@ -160,8 +167,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
       setUser(userData);
       // Register for push notifications
-      if (userData.userid) { // Use the UUID 'userid' here
-        registerForPushNotificationsAsync(userData.userid).catch(error => {
+      if (userData.id) { // Use the UUID here
+        registerForPushNotificationsAsync(userData.id).catch(error => {
           console.warn('Push notification registration failed:', error);
         });
       }
