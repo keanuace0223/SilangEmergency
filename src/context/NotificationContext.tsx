@@ -109,10 +109,27 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     }
 
     const Notifications = await import('expo-notifications');
+    let body: string | null = null;
+
+    switch (status) {
+      case 'ACKNOWLEDGED':
+        body = 'Report Accepted. We have received and acknowledged your report.';
+        break;
+      case 'ON_GOING':
+        body = 'Responders Dispatched. An ambulance/response team is on the way.';
+        break;
+      case 'RESOLVED':
+        body = 'Case Closed. Thank you for using Silang Emergency.';
+        break;
+      default:
+        // No local notification for other status changes
+        return;
+    }
+
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: "Report Update",
-        body: `Your report is now marked as ${status}`,
+        title: 'Report Update',
+        body,
         sound: 'default',
       },
       trigger: null,

@@ -6,6 +6,7 @@ import { ActivityIndicator, DeviceEventEmitter, Dimensions, FlatList, Image, Lin
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 import ScaledText from '../../components/ScaledText'
+import SlideToResolve from '../../components/SlideToResolve'
 import { Subtitle, Title } from '../../components/Typography'
 import { images } from '../../constants/images'
 import { api } from '../../src/api/client'
@@ -32,6 +33,7 @@ const Home = () => {
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [refreshing, setRefreshing] = React.useState(false)
+  const [isResolving, setIsResolving] = React.useState(false)
 
   const [coords, setCoords] = React.useState<{ latitude: number; longitude: number } | null>(null)
   const [isLocating, setIsLocating] = React.useState(false)
@@ -175,6 +177,19 @@ const Home = () => {
   }
 
   // Helper function to get AVPU display info
+  const getStatusBadgeInfo = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'received':
+        return { text: 'Received', color: '#F59E0B' }; // Yellow
+      case 'responding':
+        return { text: 'Responding', color: '#FF6B35' }; // Orange
+      case 'resolved':
+        return { text: 'Resolved', color: '#10B981' }; // Green
+      default:
+        return { text: (status || 'Unknown').toUpperCase(), color: '#6B7280' }; // Gray
+    }
+  };
+
   const getPatientStatusInfo = (status: string) => {
     switch (status) {
       case 'Alert':
@@ -216,6 +231,23 @@ const Home = () => {
   const handleDetailClose = () => {
     setShowDetail(false)
     setSelectedReport(null)
+  }
+
+  const handleResolveReport = async () => {
+    if (!selectedReport || selectedReport.status !== 'ON_GOING') return
+
+    try {
+      setIsResolving(true)
+      await api.reports.update(selectedReport.id, { status: 'RESOLVED' })
+      await fetchReports()
+      setShowDetail(false)
+      setSelectedReport(null)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to resolve report'
+      setError(msg)
+    } finally {
+      setIsResolving(false)
+    }
   }
 
   const renderReportItem = ({ item }: { item: any }) => {
@@ -305,6 +337,26 @@ const Home = () => {
             ) : null}
 
             <View className="mt-3 flex-row items-center justify-between">
+              {(() => {
+                const badgeInfo = getStatusBadgeInfo(item.status);
+                return (
+                  <View
+                    className="px-2.5 py-1 rounded-full"
+                    style={{ backgroundColor: badgeInfo.color + '1A' }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: '600',
+                        color: badgeInfo.color,
+                      }}
+                    >
+                      {badgeInfo.text}
+                    </Text>
+                  </View>
+                );
+              })()}
+
               {statusInfo && (
                 <View
                   className="flex-row items-center px-2.5 py-1 rounded-full"
@@ -609,11 +661,12 @@ const Home = () => {
 
       {/* Report Detail Modal (mirrors reports screen) */}
       <Modal visible={showDetail} animationType="slide" onRequestClose={handleDetailClose}>
-        <View className={`flex-1 bg-white`}>
-          <View className={`px-4 py-4 border-b shadow-sm bg-white border-gray-100`}>
+        <View className={`flex-1 bg-white`} style={{ paddingTop: insets.top }}>
+          {/* Header */}
+          <View className={`px-4 py-3 border-b border-gray-200 bg-white`}>
             <View className="flex-row items-center justify-between">
               <TouchableOpacity onPress={handleDetailClose} className="p-2">
-                <Ionicons name="close" size={24} color="#666" />
+                <Ionicons name="close" size={26} color="#1F2937" />
               </TouchableOpacity>
               <Text className={`text-lg font-semibold text-gray-900`}>Report Details</Text>
               <View className="w-8" />
@@ -634,29 +687,47 @@ const Home = () => {
                   />
                 </View>
                 <View className="flex-1">
-                  <Text className={`text-2xl font-bold mb-1 text-gray-900`}>{selectedReport.incident_type}</Text>
-                  {(() => {
-                    const statusInfo = getPatientStatusInfo(selectedReport.patient_status || 'No Patient');
-                    return (
-                      <View
-                        className="px-3 py-1 rounded-full self-start flex-row items-center"
-                        style={{ backgroundColor: statusInfo.color + '1A' }}
-                      >
-                        <Ionicons
-                          name={statusInfo.icon as any}
-                          size={14}
-                          color={statusInfo.color}
-                          style={{ marginRight: 6 }}
-                        />
-                        <Text
-                          className="text-sm font-semibold"
-                          style={{ color: statusInfo.color }}
+                  <Text className={`text-2xl font-bold mb-2 text-gray-900`}>{selectedReport.incident_type}</Text>
+                  <View className="flex-row items-center gap-x-2">
+                    {(() => {
+                      const badgeInfo = getStatusBadgeInfo(selectedReport.status);
+                      return (
+                        <View
+                          className="px-3 py-1 rounded-full self-start"
+                          style={{ backgroundColor: badgeInfo.color + '1A' }}
                         >
-                          {statusInfo.text}
-                        </Text>
-                      </View>
-                    );
-                  })()}
+                          <Text
+                            className="text-xs font-semibold"
+                            style={{ color: badgeInfo.color }}
+                          >
+                            {badgeInfo.text}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                    {(() => {
+                      const statusInfo = getPatientStatusInfo(selectedReport.patient_status || 'No Patient');
+                      return (
+                        <View
+                          className="px-3 py-1 rounded-full self-start flex-row items-center"
+                          style={{ backgroundColor: statusInfo.color + '1A' }}
+                        >
+                          <Ionicons
+                            name={statusInfo.icon as any}
+                            size={12}
+                            color={statusInfo.color}
+                            style={{ marginRight: 5 }}
+                          />
+                          <Text
+                            className="text-xs font-semibold"
+                            style={{ color: statusInfo.color }}
+                          >
+                            {statusInfo.text}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                  </View>
                 </View>
               </View>
 
@@ -714,6 +785,15 @@ const Home = () => {
                   </View>
                 </View>
               </View>
+
+              {selectedReport.status === 'ON_GOING' && (
+                <View className="mb-6">
+                  <SlideToResolve
+                    onResolve={handleResolveReport}
+                    isResolving={isResolving}
+                  />
+                </View>
+              )}
             </ScrollView>
           )}
         </View>

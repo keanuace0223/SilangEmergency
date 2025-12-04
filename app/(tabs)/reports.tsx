@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AppModal from '../../components/AppModal'
 import OfflineModeBanner from '../../components/OfflineModeBanner'
 import ScaledText from '../../components/ScaledText'
+import SlideToResolve from '../../components/SlideToResolve'
 import SyncStatusIndicator from '../../components/SyncStatusIndicator'
 import { Body, Caption, Subtitle, Title } from '../../components/Typography'
 import { images } from '../../constants/images'
@@ -41,6 +42,7 @@ const Reports = () => {
   const [modalIcon, setModalIcon] = React.useState<'checkmark-circle' | 'warning' | 'information-circle'>('information-circle')
   const [modalIconColor, setModalIconColor] = React.useState('#2563EB')
   const [showCallConfirm, setShowCallConfirm] = React.useState(false)
+  const [isResolving, setIsResolving] = React.useState(false)
 
   const showModal = (title: string, message: string, icon: 'checkmark-circle' | 'warning' | 'information-circle', color: string) => {
     setModalTitle(title)
@@ -245,6 +247,23 @@ const Reports = () => {
   const handleDetailClose = () => {
     setShowDetail(false)
     setSelectedReport(null)
+  }
+
+  const handleResolveReport = async () => {
+    if (!selectedReport || selectedReport.status !== 'ON_GOING') return
+
+    try {
+      setIsResolving(true)
+      await api.reports.update(selectedReport.id, { status: 'RESOLVED' })
+      await fetchReports()
+      setShowDetail(false)
+      setSelectedReport(null)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to resolve report. Please try again.'
+      showModal('Unable to resolve', msg, 'warning', '#EF4444')
+    } finally {
+      setIsResolving(false)
+    }
   }
 
   // Handle image viewer open
@@ -609,11 +628,12 @@ const Reports = () => {
 
       {/* Report Detail Modal */}
       <Modal visible={showDetail} animationType="slide" onRequestClose={handleDetailClose}>
-        <View className={`flex-1 bg-white`}>
-          <View className={`px-4 py-4 border-b shadow-sm bg-white border-gray-100`}>
+        <View className={`flex-1 bg-white`} style={{ paddingTop: insets.top }}>
+          {/* Header */}
+          <View className={`px-4 py-3 border-b border-gray-200 bg-white`}>
             <View className="flex-row items-center justify-between">
               <TouchableOpacity onPress={handleDetailClose} className="p-2">
-                <Ionicons name="close" size={24} color="#666" />
+                <Ionicons name="close" size={26} color="#1F2937" />
               </TouchableOpacity>
               <ScaledText baseSize={18} className={`font-semibold text-gray-900`}>Report Details</ScaledText>
               <View className="w-8" />
@@ -634,30 +654,49 @@ const Reports = () => {
                   />
                 </View>
                 <View className="flex-1">
-                  <ScaledText baseSize={22} className={`font-bold mb-1 text-gray-900`}>{selectedReport.incident_type}</ScaledText>
-                  {(() => {
-                    const statusInfo = getPatientStatusInfo(selectedReport.patient_status || 'No Patient');
-                    return (
-                      <View
-                        className="px-3 py-1 rounded-full self-start flex-row items-center"
-                        style={{ backgroundColor: statusInfo.color + '1A' }}
-                      >
-                        <Ionicons
-                          name={statusInfo.icon as any}
-                          size={14}
-                          color={statusInfo.color}
-                          style={{ marginRight: 6 }}
-                        />
-                        <ScaledText
-                          baseSize={14}
-                          className="font-semibold"
-                          style={{ color: statusInfo.color }}
+                  <ScaledText baseSize={22} className={`font-bold mb-2 text-gray-900`}>{selectedReport.incident_type}</ScaledText>
+                  <View className="flex-row items-center gap-x-2">
+                    {(() => {
+                      const badgeInfo = getStatusBadgeInfo(selectedReport.status || 'PENDING');
+                      return (
+                        <View
+                          className="px-3 py-1 rounded-full self-start"
+                          style={{ backgroundColor: badgeInfo.backgroundColor }}
                         >
-                          {statusInfo.text}
-                        </ScaledText>
-                      </View>
-                    );
-                  })()}
+                          <ScaledText
+                            baseSize={12}
+                            className="font-semibold"
+                            style={{ color: badgeInfo.color }}
+                          >
+                            {badgeInfo.text}
+                          </ScaledText>
+                        </View>
+                      );
+                    })()}
+                    {(() => {
+                      const statusInfo = getPatientStatusInfo(selectedReport.patient_status || 'No Patient');
+                      return (
+                        <View
+                          className="px-3 py-1 rounded-full self-start flex-row items-center"
+                          style={{ backgroundColor: statusInfo.color + '1A' }}
+                        >
+                          <Ionicons
+                            name={statusInfo.icon as any}
+                            size={12}
+                            color={statusInfo.color}
+                            style={{ marginRight: 5 }}
+                          />
+                          <ScaledText
+                            baseSize={12}
+                            className="font-semibold"
+                            style={{ color: statusInfo.color }}
+                          >
+                            {statusInfo.text}
+                          </ScaledText>
+                        </View>
+                      );
+                    })()}
+                  </View>
                 </View>
               </View>
 
@@ -714,6 +753,15 @@ const Reports = () => {
                   </View>
                 </View>
               </View>
+
+              {selectedReport.status === 'ON_GOING' && (
+                <View className="mb-6">
+                  <SlideToResolve
+                    onResolve={handleResolveReport}
+                    isResolving={isResolving}
+                  />
+                </View>
+              )}
 
             </ScrollView>
           )}

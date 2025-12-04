@@ -4,7 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy'
 import * as ImagePicker from 'expo-image-picker'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, Animated, Dimensions, KeyboardAvoidingView, Modal, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, Animated, Dimensions, KeyboardAvoidingView, Modal, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import AppModal from '../../components/AppModal'
 import OptimizedProfilePicture from '../../components/OptimizedProfilePicture'
@@ -29,6 +29,7 @@ const Profile = () => {
   const [infoModalMessage, setInfoModalMessage] = useState('')
   const [infoModalIcon, setInfoModalIcon] = useState<keyof typeof Ionicons.glyphMap>('information-circle')
   const [infoModalIconColor, setInfoModalIconColor] = useState('#2563EB')
+  const [isUploading, setIsUploading] = useState(false)
 
   // Extract a Supabase Storage path from either a raw path or a signed/public URL
   const getStoragePathFromValue = useCallback((value: string | null | undefined): string | null => {
@@ -99,7 +100,6 @@ const Profile = () => {
   const [editBarangay, setEditBarangay] = useState('')
   const [editContactNumber, setEditContactNumber] = useState('')
   const [editPosition, setEditPosition] = useState<'Barangay Captain' | 'Councilor' | ''>('')
-  const [showPositionMenu, setShowPositionMenu] = useState(false)
   const [isSavingPersonal, setIsSavingPersonal] = useState(false)
   
   // Animation for refresh icon
@@ -217,74 +217,72 @@ const Profile = () => {
       <View className="mx-5 mt-4 p-6 bg-white rounded-3xl shadow-sm border border-gray-100 items-center">
         {/* Profile Picture */}
         <View className="mb-4">
-          <OptimizedProfilePicture
-            uri={avatarPreviewUrl || user.profile_pic}
-            size={112} // w-28 h-28 equivalent
-            className=""
-          />
+          <View className="relative">
+            <OptimizedProfilePicture
+              uri={avatarPreviewUrl || user.profile_pic}
+              size={112} // w-28 h-28 equivalent
+              className=""
+            />
+            {isUploading && (
+              <View className="absolute inset-0 bg-white/50 rounded-full items-center justify-center">
+                <ActivityIndicator size="large" color="#2563EB" />
+              </View>
+            )}
+          </View>
           {/* Edit avatar button */}
           <TouchableOpacity
+            disabled={isUploading}
             onPress={async () => {
-                try {
-                  const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
-                  if (perm.status !== 'granted') return
-                  const result = await ImagePicker.launchImageLibraryAsync({ 
-                    mediaTypes: ImagePicker.MediaTypeOptions.Images, 
-                    allowsEditing: true,
-                    aspect: [1, 1],
-                    quality: 0.7, // Reduced quality for smaller file size
-                    exif: false, // Remove EXIF data to reduce size
-                    allowsMultipleSelection: false
-                  })
-                  if (!result.canceled && result.assets && result.assets.length > 0) {
-                    let localUri = result.assets[0].uri
-                    // Ensure <= 500KB for faster loading
-                    localUri = await compressImageToUnder500KB(localUri)
-                    if (user?.id) {
-                      // Upload to Supabase Storage and save storage path to user row; use signed URL for preview
-                      const { path, signedUrl, error } = await uploadProfileImage(String(user.id), localUri)
-                      if (error || !path) {
-                        console.warn('Avatar upload failed or path missing. Not updating DB.', error)
-                        showInfoModal('Upload failed', (error as any)?.message || 'Could not upload image to storage.', 'warning', '#EF4444')
-                        return
-                      }
-                      const finalUrl = signedUrl || localUri
-                      setAvatarPreviewUrl(finalUrl)
-                      try {
-                        // Write storage path into DB; UI will resolve to signed URL when needed
-                        const { data, error: updateErr } = await db.updateUser(String(user.id), { profile_pic: path } as any)
-                        if (updateErr) {
-                          console.warn('Supabase profile_pic update failed', updateErr)
-                        }
-                        // Mirror to local storage using server response when available
-                        const nextPersist = data ? {
-                          id: data.id,
-                          userID: data.userid,
-                          name: data.name,
-                          barangay: data.barangay,
-                          barangay_position: data.barangay_position,
-                          contact_number: (data as any).contact_number,
-                          profile_pic: data.profile_pic || path,
-                        } : null
-                        if (nextPersist) {
-                          await AsyncStorage.setItem('userData', JSON.stringify(nextPersist))
-                        }
-                      } catch (e) { console.warn('Supabase profile_pic update failed', e) }
-                      if (!__DEV__) {}
-                      // Fallback: ensure at least local storage has the path
-                      const raw = await AsyncStorage.getItem('userData')
-                      const parsed = raw ? JSON.parse(raw) : {}
-                      const updated = { ...parsed, profile_pic: path }
-                      await AsyncStorage.setItem('userData', JSON.stringify(updated))
-                      await refreshUser()
-                      // Clear preview once global user is refreshed to avoid stale signed URL
-                      setAvatarPreviewUrl(null)
-                    }
-                  }
-                } catch (e) {
-                  console.error('Profile photo update failed', e)
+              setIsUploading(true);
+              try {
+                const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                if (perm.status !== 'granted') return;
+
+                const result = await ImagePicker.launchImageLibraryAsync({
+                  mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                  allowsEditing: true,
+                  aspect: [1, 1],
+                  quality: 0.7,
+                  exif: false,
+                  allowsMultipleSelection: false,
+                });
+
+                if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+                let localUri = result.assets[0].uri;
+                localUri = await compressImageToUnder500KB(localUri);
+
+                if (!user?.id) return;
+
+                const { path, signedUrl, error } = await uploadProfileImage(String(user.id), localUri);
+
+                if (error || !path) {
+                  showInfoModal('Upload failed', (error as any)?.message || 'Could not upload image.', 'warning', '#EF4444');
+                  return;
                 }
-              }}
+
+                setAvatarPreviewUrl(signedUrl || localUri);
+
+                const { error: updateErr } = await db.updateUser(String(user.id), { profile_pic: path } as any);
+                if (updateErr) {
+                  console.warn('Supabase profile_pic update failed', updateErr);
+                }
+
+                const updatedUserData = {
+                  ...(await AsyncStorage.getItem('userData').then(raw => (raw ? JSON.parse(raw) : {}))),
+                  profile_pic: path,
+                };
+                await AsyncStorage.setItem('userData', JSON.stringify(updatedUserData));
+
+                await refreshUser();
+                setAvatarPreviewUrl(null);
+              } catch (e) {
+                console.error('Profile photo update failed', e);
+                showInfoModal('Error', 'An unexpected error occurred while updating your photo.', 'warning', '#EF4444');
+              } finally {
+                setIsUploading(false);
+              }
+            }}
               className="w-9 h-9 rounded-full bg-white items-center justify-center"
               style={{ position: 'absolute', bottom: -6, left: -6, elevation: 3 }}
               activeOpacity={0.8}

@@ -10,6 +10,7 @@ interface Report {
   report_type?: 'official' | 'follow-up';
   uploaded_media: string[];
   description: string;
+  status: 'PENDING' | 'ACKNOWLEDGED' | 'ON_GOING' | 'RESOLVED' | 'DECLINED';
 }
 
 interface CreateReportData {
