@@ -628,7 +628,7 @@ const Reports = () => {
 
       {/* Report Detail Modal */}
       <Modal visible={showDetail} animationType="slide" onRequestClose={handleDetailClose}>
-        <View className={`flex-1 bg-white`} style={{ paddingTop: insets.top }}>
+        <View className={`flex-1 bg-white`} style={{ paddingTop: 5 }}>
           {/* Header */}
           <View className={`px-4 py-3 border-b border-gray-200 bg-white`}>
             <View className="flex-row items-center justify-between">
