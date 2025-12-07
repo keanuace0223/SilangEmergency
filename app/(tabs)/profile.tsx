@@ -586,7 +586,7 @@ const Profile = () => {
 
             <View className="mb-4">
               <Text className="text-gray-500 mb-1" style={{ fontSize: scaleFont(13) }}>App Version</Text>
-              <Text className="text-gray-900 font-semibold" style={{ fontSize: scaleFont(16) }}>1.2.3</Text>
+              <Text className="text-gray-900 font-semibold" style={{ fontSize: scaleFont(16) }}>1.2.4</Text>
             </View>
 
             <Text className="text-gray-600" style={{ fontSize: scaleFont(14) }}>
