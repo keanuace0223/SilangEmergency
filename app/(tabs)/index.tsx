@@ -178,13 +178,16 @@ const Home = () => {
 
   // Helper function to get AVPU display info
   const getStatusBadgeInfo = (status: string) => {
-    switch (status?.toLowerCase()) {
+    const normalized = status?.toLowerCase();
+    switch (normalized) {
       case 'received':
         return { text: 'Received', color: '#F59E0B' }; // Yellow
       case 'responding':
         return { text: 'Responding', color: '#FF6B35' }; // Orange
       case 'resolved':
         return { text: 'Resolved', color: '#10B981' }; // Green
+      case 'declined':
+        return { text: 'Recorded', color: '#0EA5E9' };
       default:
         return { text: (status || 'Unknown').toUpperCase(), color: '#6B7280' }; // Gray
     }

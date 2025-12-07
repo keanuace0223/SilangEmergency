@@ -309,7 +309,7 @@ export default function AdminUsersScreen() {
               >
                 <View style={{ marginRight: 12 }}>
                   <OptimizedProfilePicture
-                    uri={(item as any).profile_pic || (item as any).avatar_url || undefined}
+                    uri={(item as any).profile_pic_url || undefined}
                     size={48}
                   />
                 </View>
@@ -338,6 +338,12 @@ export default function AdminUsersScreen() {
                     className="w-9 h-9 rounded-full bg-orange-50 items-center justify-center border border-orange-200"
                   >
                     <Ionicons name="refresh" size={18} color="#EA580C" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleForceLogout(item)}
+                    className="w-9 h-9 rounded-full bg-yellow-50 items-center justify-center border border-yellow-200"
+                  >
+                    <Ionicons name="log-out-outline" size={18} color="#D97706" />
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleDeleteUser(item)}

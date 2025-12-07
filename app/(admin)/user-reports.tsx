@@ -7,12 +7,6 @@ import ScaledText from '../../components/ScaledText';
 import { Body, Caption, Subtitle } from '../../components/Typography';
 import { adminApi } from '../../src/utils/adminApi';
 
-type ModalAction = {
-  label: string;
-  onPress?: () => void;
-  variant?: 'primary' | 'secondary' | 'danger';
-  disabled?: boolean;
-};
 
 export default function AdminUserReportsScreen() {
   const { userId } = useLocalSearchParams<{ userId?: string }>();
@@ -23,19 +17,6 @@ export default function AdminUserReportsScreen() {
   const [showDetail, setShowDetail] = useState(false);
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-
-  const [modalVisible, setModalVisible] = useState(false);
-  const [modalTitle, setModalTitle] = useState('');
-  const [modalMessage, setModalMessage] = useState('');
-  const [modalIcon, setModalIcon] = useState<keyof typeof Ionicons.glyphMap>('information-circle');
-  const [modalIconColor, setModalIconColor] = useState('#2563EB');
-  const [modalActions, setModalActions] = useState<ModalAction[]>([
-    {
-      label: 'OK',
-      onPress: () => setModalVisible(false),
-      variant: 'primary',
-    },
-  ]);
 
   const load = useCallback(async () => {
     try {
@@ -53,30 +34,6 @@ export default function AdminUserReportsScreen() {
     }
   }, [userId]);
 
-  const showModal = (
-    title: string,
-    message: string,
-    icon: keyof typeof Ionicons.glyphMap,
-    color: string,
-    actions?: ModalAction[],
-  ) => {
-    setModalTitle(title);
-    setModalMessage(message);
-    setModalIcon(icon);
-    setModalIconColor(color);
-    setModalActions(
-      actions && actions.length > 0
-        ? actions
-        : [
-            {
-              label: 'OK',
-              onPress: () => setModalVisible(false),
-              variant: 'primary',
-            },
-          ],
-    );
-    setModalVisible(true);
-  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -173,41 +130,17 @@ export default function AdminUserReportsScreen() {
       hour12: true,
     });
   };
-  const handleDeleteReport = (report: any) => {
-    showModal(
-      'Delete report?',
-      'Delete this report permanently?',
-      'alert-circle',
-      '#EF4444',
-      [
-        {
-          label: 'Cancel',
-          variant: 'secondary',
-          onPress: () => setModalVisible(false),
-        },
-        {
-          label: 'Delete',
-          variant: 'danger',
-          onPress: async () => {
-            setModalVisible(false);
-            try {
-              await adminApi.deleteReport(String(report.id));
-              setReports(prev => prev.filter(r => r.id !== report.id));
-            } catch (error: any) {
-              showModal(
-                'Error',
-                error?.message || 'Failed to delete report. Please try again.',
-                'warning',
-                '#EF4444',
-              );
-            }
-          },
-        },
-      ],
-    );
-  };
   const renderReportItem = ({ item }: { item: any }) => {
     const statusInfo = getPatientStatusInfo(item.patient_status || 'No Patient');
+    const statusKey = String(item.status) as keyof typeof statusMap;
+    const statusMap = {
+      'PENDING': { text: 'SENT', color: '#6B7280', backgroundColor: '#F3F4F6' },
+      'ACKNOWLEDGED': { text: 'RECEIVED', color: '#D97706', backgroundColor: '#FEF3C7' },
+      'ON_GOING': { text: 'RESPONDERS ON WAY', color: '#EA580C', backgroundColor: '#FFEDD5' },
+      'RESOLVED': { text: 'RESOLVED', color: '#16A34A', backgroundColor: '#DCFCE7' },
+      'DECLINED': { text: 'RECORDED', color: '#0EA5E9', backgroundColor: '#E0F2FE' },
+    };
+    const badgeInfo = statusMap[statusKey] || { text: (item.status || 'N/A').toUpperCase(), color: '#6B7280', backgroundColor: '#F3F4F6' };
 
     return (
       <TouchableOpacity
@@ -228,7 +161,6 @@ export default function AdminUserReportsScreen() {
           }}
         >
           <View className="px-4 py-3">
-            {/* Top row: icon, title, timestamp + delete */}
             <View className="flex-row items-start justify-between">
               <View className="flex-row items-center flex-1">
                 <View
@@ -242,59 +174,39 @@ export default function AdminUserReportsScreen() {
                   />
                 </View>
                 <View className="flex-1">
-                  <Subtitle
-                    className="text-lg font-bold"
-                    style={{ color: '#111827' }}
-                    numberOfLines={1}
-                  >
+                  <Subtitle className="text-lg font-bold" style={{ color: '#111827' }} numberOfLines={1}>
                     {item.incident_type}
                   </Subtitle>
                 </View>
               </View>
-              <View className="items-end ml-2">
-                <Caption
-                  className="text-xs"
-                  style={{ color: '#9CA3AF' }}
-                >
-                  {formatTimestamp(item.incident_datetime || item.created_at)}
-                </Caption>
-                <TouchableOpacity
-                  onPress={() => handleDeleteReport(item)}
-                  className="mt-2 w-8 h-8 rounded-full bg-red-50 items-center justify-center border border-red-200"
-                >
-                  <Ionicons name="trash-outline" size={16} color="#DC2626" />
-                </TouchableOpacity>
-              </View>
+              <Caption className="text-xs" style={{ color: '#9CA3AF', marginLeft: 8 }}>
+                {formatTimestamp(item.incident_datetime || item.created_at)}
+              </Caption>
             </View>
 
-            {/* Description */}
             {item.description ? (
-              <Body
-                className="mt-2 text-sm"
-                style={{ color: '#4B5563' }}
-                numberOfLines={2}
-              >
+              <Body className="mt-2 text-sm" style={{ color: '#4B5563' }} numberOfLines={2}>
                 {item.description}
               </Body>
             ) : null}
 
-            {/* Bottom row: status badge, location, ID */}
             <View className="mt-3 flex-row items-center justify-between">
+              <View
+                className="px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: badgeInfo.backgroundColor }}
+              >
+                <Caption className="font-semibold" style={{ color: badgeInfo.color, fontSize: 10 }}>
+                  {badgeInfo.text}
+                </Caption>
+              </View>
+
               {statusInfo && (
                 <View
                   className="flex-row items-center px-2.5 py-1 rounded-full"
                   style={{ backgroundColor: statusInfo.color + '1A' }}
                 >
-                  <Ionicons
-                    name={statusInfo.icon as any}
-                    size={11}
-                    color={statusInfo.color}
-                    style={{ marginRight: 4 }}
-                  />
-                  <Caption
-                    className="font-semibold"
-                    style={{ color: statusInfo.color, fontSize: 10 }}
-                  >
+                  <Ionicons name={statusInfo.icon as any} size={11} color={statusInfo.color} style={{ marginRight: 4 }} />
+                  <Caption className="font-semibold" style={{ color: statusInfo.color, fontSize: 10 }}>
                     {statusInfo.text}
                   </Caption>
                 </View>
@@ -302,21 +214,12 @@ export default function AdminUserReportsScreen() {
 
               <View className="flex-1 flex-row items-center mx-3">
                 <Ionicons name="location" size={12} color="#6B7280" />
-                <Caption
-                  numberOfLines={1}
-                  style={{
-                    color: '#6B7280',
-                    fontSize: 11,
-                    marginLeft: 4,
-                  }}
-                >
+                <Caption numberOfLines={1} style={{ color: '#6B7280', fontSize: 11, marginLeft: 4 }}>
                   {item.location}
                 </Caption>
               </View>
 
-              <Caption
-                style={{ color: '#9CA3AF', fontSize: 11 }}
-              >
+              <Caption style={{ color: '#9CA3AF', fontSize: 11 }}>
                 #{formatShortId(item.id)}
               </Caption>
             </View>
@@ -347,15 +250,15 @@ export default function AdminUserReportsScreen() {
         />
       )}
 
-      {/* Report Detail Modal (mirror of tabs report details) */}
+      {/* Report Detail Modal */}
       <Modal visible={showDetail} animationType="slide" onRequestClose={() => { setShowDetail(false); setSelectedReport(null); }}>
-        <View className={`flex-1 bg-white`}>
-          <View className={`px-4 py-4 border-b shadow-sm bg-white border-gray-100`}>
+        <View className={`flex-1 bg-white`} style={{ paddingTop: 5 }}>
+          <View className={`px-4 py-3 border-b border-gray-200 bg-white`}>
             <View className="flex-row items-center justify-between">
               <TouchableOpacity onPress={() => { setShowDetail(false); setSelectedReport(null); }} className="p-2">
-                <Ionicons name="close" size={24} color="#666" />
+                <Ionicons name="close" size={26} color="#1F2937" />
               </TouchableOpacity>
-              <Text className={`text-lg font-semibold text-gray-900`}>Report Details</Text>
+              <ScaledText baseSize={18} className={`font-semibold text-gray-900`}>Report Details</ScaledText>
               <View className="w-8" />
             </View>
           </View>
@@ -363,43 +266,79 @@ export default function AdminUserReportsScreen() {
           {selectedReport && (
             <ScrollView className="flex-1" contentContainerStyle={{ padding: 20 }}>
               <View className="flex-row items-center mb-6">
-                <View className={`w-16 h-16 rounded-full items-center justify-center mr-4 shadow-sm bg-blue-50`}>
-                  <Ionicons name={getIncidentIcon(selectedReport.incident_type) as any} size={32} color="#4A90E2" />
+                <View
+                  className={`w-16 h-16 rounded-full items-center justify-center mr-4 shadow-sm`}
+                  style={{ backgroundColor: getIncidentColor(selectedReport.incident_type) + '1A' }}
+                >
+                  <Ionicons
+                    name={getIncidentIcon(selectedReport.incident_type) as any}
+                    size={32}
+                    color={getIncidentColor(selectedReport.incident_type)}
+                  />
                 </View>
                 <View className="flex-1">
-                  <Text className={`text-2xl font-bold mb-1 text-gray-900`}>{selectedReport.incident_type}</Text>
-                  {(() => {
-                    const statusInfo = getPatientStatusInfo(selectedReport.patient_status || 'No Patient');
-                    return (
-                      <View className="px-3 py-1 rounded-full self-start" style={{ backgroundColor: statusInfo.color + 'E6' }}>
-                        <Text className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>{statusInfo.text}</Text>
-                      </View>
-                    );
-                  })()}
+                  <ScaledText baseSize={22} className={`font-bold mb-2 text-gray-900`}>{selectedReport.incident_type}</ScaledText>
+                  <View className="flex-row items-center gap-x-2">
+                    {(() => {
+                      const statusKey = String(selectedReport.status) as keyof typeof statusMap;
+                      const statusMap = {
+                        'PENDING': { text: 'SENT', color: '#6B7280', backgroundColor: '#F3F4F6' },
+                        'ACKNOWLEDGED': { text: 'RECEIVED', color: '#D97706', backgroundColor: '#FEF3C7' },
+                        'ON_GOING': { text: 'RESPONDERS ON WAY', color: '#EA580C', backgroundColor: '#FFEDD5' },
+                        'RESOLVED': { text: 'RESOLVED', color: '#16A34A', backgroundColor: '#DCFCE7' },
+                        'DECLINED': { text: 'RECORDED', color: '#0EA5E9', backgroundColor: '#E0F2FE' },
+                      };
+                      const badgeInfo = statusMap[statusKey] || { text: (selectedReport.status || 'N/A').toUpperCase(), color: '#6B7280', backgroundColor: '#F3F4F6' };
+                      return (
+                        <View
+                          className="px-3 py-1 rounded-full self-start"
+                          style={{ backgroundColor: badgeInfo.backgroundColor }}
+                        >
+                          <ScaledText baseSize={12} className="font-semibold" style={{ color: badgeInfo.color }}>
+                            {badgeInfo.text}
+                          </ScaledText>
+                        </View>
+                      );
+                    })()}
+                    {(() => {
+                      const statusInfo = getPatientStatusInfo(selectedReport.patient_status || 'No Patient');
+                      return (
+                        <View
+                          className="px-3 py-1 rounded-full self-start flex-row items-center"
+                          style={{ backgroundColor: statusInfo.color + '1A' }}
+                        >
+                          <Ionicons name={statusInfo.icon as any} size={12} color={statusInfo.color} style={{ marginRight: 5 }} />
+                          <ScaledText baseSize={12} className="font-semibold" style={{ color: statusInfo.color }}>
+                            {statusInfo.text}
+                          </ScaledText>
+                        </View>
+                      );
+                    })()}
+                  </View>
                 </View>
               </View>
 
               <View className="mb-6">
-                <Text className={`text-lg font-semibold mb-2 text-gray-900`}>Location</Text>
+                <ScaledText baseSize={18} className={`font-semibold mb-2 text-gray-900`}>Location</ScaledText>
                 <View className={`flex-row items-center p-4 rounded-xl bg-gray-50`}>
                   <Ionicons name="location" size={20} color="#4A90E2" />
-                  <Text className={`text-base ml-2 text-gray-700`}>{selectedReport.location}</Text>
+                  <ScaledText baseSize={16} className={`ml-2 text-gray-700`}>{selectedReport.location}</ScaledText>
                 </View>
               </View>
 
               <View className="mb-6">
-                <Text className={`text-lg font-semibold mb-2 text-gray-900`}>Description</Text>
+                <ScaledText baseSize={18} className={`font-semibold mb-2 text-gray-900`}>Description</ScaledText>
                 <View className={`p-4 rounded-xl bg-gray-50`}>
-                  <Text className={`text-base leading-6 text-gray-700`}>{selectedReport.description}</Text>
+                  <ScaledText baseSize={16} className={`leading-6 text-gray-700`}>{selectedReport.description}</ScaledText>
                 </View>
               </View>
 
               {selectedReport.uploaded_media && selectedReport.uploaded_media.length > 0 && (
                 <View className="mb-6">
-                  <Text className={`text-lg font-semibold mb-2 text-gray-900`}>Attached Media</Text>
+                  <ScaledText baseSize={18} className={`font-semibold mb-2 text-gray-900`}>Attached Media</ScaledText>
                   <View className="flex-row flex-wrap gap-2">
                     {selectedReport.uploaded_media.map((mediaUrl: string, index: number) => (
-                      <TouchableOpacity key={index} className={`w-20 h-20 rounded-lg overflow-hidden bg-gray-100`} onPress={() => { setSelectedImageIndex(index); setShowImageViewer(true); }}>
+                      <TouchableOpacity key={index} className={`w-20 h-20 rounded-lg overflow-hidden bg-gray-100`} onPress={() => { setSelectedImageIndex(index); setShowImageViewer(true); }} activeOpacity={0.8}>
                         <Image source={{ uri: mediaUrl }} className="w-full h-full" resizeMode="cover" />
                       </TouchableOpacity>
                     ))}
@@ -408,21 +347,23 @@ export default function AdminUserReportsScreen() {
               )}
 
               <View className="mb-6">
-                <Text className={`text-lg font-semibold mb-2 text-gray-900`}>Report Information</Text>
-                <View className={`p-4 rounded-xl bg-gray-50`}>
-                  <View className="flex-row justify-between mb-2">
-                    <Text className={'text-gray-600'}>Report ID:</Text>
-                    <Text className={`font-medium text-gray-900`}>#{formatShortId(selectedReport.id)}</Text>
-                  </View>
-                  <View className="flex-row justify-between mb-2">
-                    <Text className={'text-gray-600'}>Submitted:</Text>
-                    <Text className={`font-medium text-gray-900`}>
-                      {new Date(selectedReport.incident_datetime).toLocaleDateString()} at {new Date(selectedReport.incident_datetime).toLocaleTimeString()}
-                    </Text>
+                <ScaledText baseSize={18} className={`font-semibold mb-2 text-gray-900`}>Report Information</ScaledText>
+                <View className={`p-4 rounded-xl space-y-3 bg-gray-50`}>
+                  <View className="flex-row justify-between">
+                    <ScaledText baseSize={14} className={'text-gray-600'}>Report ID:</ScaledText>
+                    <ScaledText baseSize={16} className={`font-medium text-gray-900`}>#{formatShortId(selectedReport.id)}</ScaledText>
                   </View>
                   <View className="flex-row justify-between">
-                    <Text className={'text-gray-600'}>Status:</Text>
-                    <Text className={`font-medium text-gray-900`}>REPORTED</Text>
+                    <ScaledText baseSize={14} className={'text-gray-600'}>Submitted:</ScaledText>
+                    <ScaledText baseSize={16} className={`font-medium text-gray-900`}>
+                      {new Date(selectedReport.incident_datetime).toLocaleDateString()} at {new Date(selectedReport.incident_datetime).toLocaleTimeString()}
+                    </ScaledText>
+                  </View>
+                  <View className="flex-row justify-between">
+                    <ScaledText baseSize={14} className={'text-gray-600'}>Patient Status (AVPU):</ScaledText>
+                    <ScaledText baseSize={16} className={`font-medium text-gray-900`}>
+                      {getPatientStatusInfo(selectedReport.patient_status || 'No Patient').text}
+                    </ScaledText>
                   </View>
                 </View>
               </View>

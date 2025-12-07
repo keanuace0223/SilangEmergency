@@ -118,7 +118,7 @@ const Reports = () => {
       case 'RESOLVED':
         return { text: 'RESOLVED', color: '#16A34A', backgroundColor: '#DCFCE7' };
       case 'DECLINED':
-        return { text: 'DECLINED', color: '#DC2626', backgroundColor: '#FEE2E2' };
+        return { text: 'RECORDED', color: '#0EA5E9', backgroundColor: '#E0F2FE' };
       default:
         return { text: (status || 'N/A').toUpperCase(), color: '#6B7280', backgroundColor: '#F3F4F6' };
     }

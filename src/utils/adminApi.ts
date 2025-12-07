@@ -21,6 +21,7 @@ export interface AdminUser {
   barangay_position: string;
   contact_number?: string;
   profile_pic?: string;
+  profile_pic_url?: string; // Add this line
   created_at?: string;
   reportCount?: number;
 }
@@ -100,6 +101,21 @@ class AdminApiService {
 
       if (error) {
         throw error;
+      }
+
+      // Generate signed URLs for profile pictures
+      if (users && users.length > 0) {
+        for (const user of users) {
+          if (user.profile_pic) {
+            // The 'profile_pic' field already contains the full path, e.g., "public/userId/avatar.png"
+            const { data, error } = await supabaseAdmin.storage
+              .from('avatars') // Corrected bucket name
+              .createSignedUrl(user.profile_pic, 60 * 5); // URL valid for 5 minutes
+            if (!error) {
+              (user as any).profile_pic_url = data.signedUrl;
+            }
+          }
+        }
       }
 
       // If includeReports is true, get report counts for each user
