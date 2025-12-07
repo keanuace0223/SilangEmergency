@@ -399,7 +399,9 @@ class SessionManager {
 
       if (error) {
         console.warn('updateActivity RPC error:', error);
-        return false;
+        // On network or transient errors, assume the session is still active.
+        // Only a definitive 'false' from the server should invalidate it.
+        return true;
       }
 
       // RPC returns boolean indicating if session was found and updated
@@ -481,18 +483,16 @@ class SessionManager {
 
         // Validate the session is still active by attempting to update activity
         // This implicitly checks if the session exists and is active
+        // In initialize, we only clear the session if we are CERTAIN it's invalid.
+        // A failed updateActivity call (e.g. network error) should not clear the session.
+        // We trust the local token until it's proven invalid by the server.
         const isActive = await this.updateActivity();
-        
-        if (!isActive) {
-          // Session is not active in the database
-          console.log('Stored session is not active in database, clearing...');
+        if (isActive === false) { // Explicitly check for false
+          console.log('Server confirmed session is not active, clearing...');
           this.currentSessionId = null;
           this.sessionToken = null;
           await AsyncStorage.removeItem('sessionId');
           await AsyncStorage.removeItem('sessionToken');
-          if (!authData?.session) {
-            await AsyncStorage.removeItem('authToken');
-          }
         }
       } catch (error) {
         console.warn('Failed to validate session:', error);

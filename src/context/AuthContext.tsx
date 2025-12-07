@@ -1,5 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
 import { supabase } from '../lib/supabase';
 
 type SessionType = Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session'];
@@ -117,6 +118,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sub.subscription?.unsubscribe();
     };
   }, [setFromSession]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        // App has come to the foreground, refresh the session to ensure token is valid
+        supabase.auth.getSession();
+      }
+    });
+
+    return () => {
+      sub.remove();
+    };
+  }, []);
 
   const value = useMemo(() => ({ session, user, isLoading }), [session, user, isLoading]);
 

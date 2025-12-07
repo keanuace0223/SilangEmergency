@@ -1,49 +1,99 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
-import React, { createContext, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import { Alert, AppState } from 'react-native';
 import { Report, supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
+import { useSettings } from './SettingsContext';
 
-const NotificationContext = createContext({});
+interface NotificationContextValue {
+  schedulePushNotification: (status: Report['status']) => Promise<void>;
+}
+
+const NotificationContext = createContext<NotificationContextValue | undefined>(undefined);
 
 export const NotificationProvider = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
+  const { notificationsEnabled } = useSettings();
   const appState = useRef(AppState.currentState);
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
 
+  const schedulePushNotification = useCallback(async (status: Report['status']) => {
+    if (!notificationsEnabled || Constants.appOwnership === 'expo') {
+      return;
+    }
+
+    const body = (() => {
+      switch (status) {
+        case 'ACKNOWLEDGED':
+          return 'Report Accepted. We have received and acknowledged your report.';
+        case 'ON_GOING':
+          return 'Responders Dispatched. An ambulance/response team is on the way.';
+        case 'RESOLVED':
+          return 'Case Closed. Thank you for using Silang Emergency.';
+        default:
+          return null;
+      }
+    })();
+
+    if (!body) {
+      return;
+    }
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Report Update',
+        body,
+        sound: 'default',
+      },
+      trigger: null, // Immediately
+    });
+  }, [notificationsEnabled]);
+
   useEffect(() => {
-    // Set how notifications are handled when the app is in the foreground
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
+        shouldShowAlert: notificationsEnabled,
+        shouldPlaySound: notificationsEnabled,
         shouldSetBadge: false,
-        shouldShowBanner: true, // For older iOS versions
-        shouldShowList: true,   // For older iOS versions
+        // Pass-through for older iOS versions, controlled by the main boolean
+        shouldShowBanner: notificationsEnabled,
+        shouldShowList: notificationsEnabled,
       }),
     });
 
-    // This listener is fired whenever a notification is received while the app is running
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      console.log('--- FOREGROUND NOTIFICATION RECEIVED ---');
-      console.log(JSON.stringify(notification.request.content.data, null, 2));
+      console.log('--- FOREGROUND NOTIFICATION RECEIVED ---', notification.request.content.data);
     });
 
-    // This listener is fired whenever a user taps on or interacts with a notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('--- NOTIFICATION TAPPED ---');
-      console.log(JSON.stringify(response.notification.request.content.data, null, 2));
+      console.log('--- NOTIFICATION TAPPED ---', response.notification.request.content.data);
     });
 
     return () => {
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };
-  }, []);
+  }, [notificationsEnabled]);
 
   useEffect(() => {
+    const registerForPushNotificationsAsync = async () => {
+      if (!Constants.isDevice || Constants.appOwnership === 'expo') {
+        return;
+      }
+
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        Alert.alert('Permission Denied', 'Failed to get notification permissions!');
+      }
+    };
+
     registerForPushNotificationsAsync();
 
     const subscription = AppState.addEventListener('change', nextAppState => {
@@ -62,85 +112,43 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     if (!user) return;
 
     const channel = supabase.channel('realtime:reports')
-      .on('postgres_changes' as any, {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'reports',
-        filter: `user_id=eq.${user.id}`
-            }, (payload: { new: Report; old: Report }) => {
-        if (payload.new.status !== payload.old.status) {
-          schedulePushNotification(payload.new.status);
+      .on(
+        'postgres_changes' as any,
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'reports',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload: { new: Report; old: Report }) => {
+          if (payload.new.status !== payload.old.status) {
+            schedulePushNotification(payload.new.status);
+          }
         }
-      })
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, schedulePushNotification]);
 
-  async function registerForPushNotificationsAsync() {
-    if (!Constants.isDevice) {
-      return;
-    }
-
-    // Skip notification permission flow entirely in Expo Go to avoid remote push errors
-    if (Constants.appOwnership === 'expo') {
-      return;
-    }
-
-    const Notifications = await import('expo-notifications');
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    if (finalStatus !== 'granted') {
-      Alert.alert('Permission Denied', 'Failed to get notification permissions!');
-      return;
-    }
-  }
-
-  async function schedulePushNotification(status: 'PENDING' | 'ACKNOWLEDGED' | 'ON_GOING' | 'RESOLVED' | 'DECLINED') {
-    // Local notifications are also not needed in Expo Go for server-side status changes
-    if (Constants.appOwnership === 'expo') {
-      return;
-    }
-
-    const Notifications = await import('expo-notifications');
-    let body: string | null = null;
-
-    switch (status) {
-      case 'ACKNOWLEDGED':
-        body = 'Report Accepted. We have received and acknowledged your report.';
-        break;
-      case 'ON_GOING':
-        body = 'Responders Dispatched. An ambulance/response team is on the way.';
-        break;
-      case 'RESOLVED':
-        body = 'Case Closed. Thank you for using Silang Emergency.';
-        break;
-      default:
-        // No local notification for other status changes
-        return;
-    }
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Report Update',
-        body,
-        sound: 'default',
-      },
-      trigger: null,
-    });
-  }
+  const value = useMemo<NotificationContextValue>(
+    () => ({ schedulePushNotification }),
+    [schedulePushNotification],
+  );
 
   return (
-    <NotificationContext.Provider value={{}}>
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );
 };
 
-export const useNotification = () => useContext(NotificationContext);
+export const useNotification = () => {
+  const ctx = useContext(NotificationContext);
+  if (ctx === undefined) {
+    throw new Error('useNotification must be used within a NotificationProvider');
+  }
+  return ctx;
+};

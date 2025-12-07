@@ -15,7 +15,7 @@ import { db, deleteAvatar, uploadProfileImage } from '../../src/lib/supabase'
 
 const Profile = () => {
   const { user, logout, isLoading, refreshUser } = useUser()
-  const { largeTextEnabled, textScale, toggleLargeText } = useSettings()
+  const { largeTextEnabled, textScale, toggleLargeText, notificationsEnabled, toggleNotifications } = useSettings()
   const router = useRouter()
   const [refreshing, setRefreshing] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
@@ -536,18 +536,20 @@ const Profile = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Additional Settings Placeholder */}
-            <TouchableOpacity onPress={() => Alert.alert('Coming Soon', 'This feature is under development.')} className="flex-row items-center justify-between py-4">
+            {/* Notifications Toggle */}
+            <TouchableOpacity onPress={toggleNotifications} className="flex-row items-center justify-between py-4">
               <View className="flex-row items-center">
-                <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center mr-4">
-                  <Ionicons name="notifications-outline" size={20} color="#4A90E2" />
+                <View className={`w-10 h-10 rounded-full items-center justify-center mr-4 ${notificationsEnabled ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                  <Ionicons name="notifications-outline" size={20} color={notificationsEnabled ? '#4A90E2' : '#6B7280'} />
                 </View>
                 <View>
                   <Text className="text-gray-900 font-medium" style={{ fontSize: scaleFont(18) }}>Notifications</Text>
-                  <Text className="text-gray-500" style={{ fontSize: scaleFont(13) }}>Manage notification preferences</Text>
+                  <Text className="text-gray-500" style={{ fontSize: scaleFont(13) }}>{notificationsEnabled ? 'On' : 'Off'}</Text>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+              <TouchableOpacity onPress={toggleNotifications} className="px-3 py-2 rounded-full" activeOpacity={0.8} style={{ backgroundColor: notificationsEnabled ? '#DBEAFE' : '#F3F4F6' }}>
+                <Text style={{ color: notificationsEnabled ? '#2563EB' : '#374151', fontWeight: '700', fontSize: scaleFont(13) }}>{notificationsEnabled ? 'ON' : 'OFF'}</Text>
+              </TouchableOpacity>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => Alert.alert('Coming Soon', 'This feature is under development.')} className="flex-row items-center justify-between py-4">
@@ -584,7 +586,7 @@ const Profile = () => {
 
             <View className="mb-4">
               <Text className="text-gray-500 mb-1" style={{ fontSize: scaleFont(13) }}>App Version</Text>
-              <Text className="text-gray-900 font-semibold" style={{ fontSize: scaleFont(16) }}>1.1.0</Text>
+              <Text className="text-gray-900 font-semibold" style={{ fontSize: scaleFont(16) }}>1.2.3</Text>
             </View>
 
             <Text className="text-gray-600" style={{ fontSize: scaleFont(14) }}>

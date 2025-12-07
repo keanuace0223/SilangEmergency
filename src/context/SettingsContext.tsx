@@ -4,9 +4,11 @@ import { AppState, Dimensions, PixelRatio, ScaledSize } from 'react-native';
 
 type SettingsContextType = {
   largeTextEnabled: boolean;
+  notificationsEnabled: boolean;
   textScale: number; // 1 = normal, 1.2 = larger, etc.
   toggleLargeText: () => Promise<void>;
   setLargeText: (enabled: boolean) => Promise<void>;
+  toggleNotifications: () => Promise<void>;
 };
 
 const DEFAULT_SCALE_NORMAL = 1;
@@ -17,6 +19,7 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [largeTextEnabled, setLargeTextEnabled] = useState<boolean>(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(true);
   const [textScale, setTextScale] = useState<number>(DEFAULT_SCALE_NORMAL);
   const [, setHydrated] = useState(false);
 
@@ -36,10 +39,15 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        const enabled = Boolean(parsed.largeTextEnabled);
-        setLargeTextEnabled(enabled);
+        const lteEnabled = Boolean(parsed.largeTextEnabled);
+        setLargeTextEnabled(lteEnabled);
+
+        // Default to true if not set
+        const neEnabled = parsed.notificationsEnabled !== false;
+        setNotificationsEnabled(neEnabled);
+
         const window = Dimensions.get('window');
-        setTextScale(computeAdaptiveScale(enabled, window));
+        setTextScale(computeAdaptiveScale(lteEnabled, window));
       }
     } catch {}
     setHydrated(true);
@@ -49,12 +57,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     hydrate();
   }, [hydrate]);
 
-  const persist = useCallback(async (nextEnabled: boolean) => {
-    const next = {
-      largeTextEnabled: nextEnabled,
-    };
+  const persist = useCallback(async (settings: { largeTextEnabled: boolean; notificationsEnabled: boolean }) => {
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     } catch {}
   }, []);
 
@@ -62,19 +67,27 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLargeTextEnabled(enabled);
     const window = Dimensions.get('window');
     setTextScale(computeAdaptiveScale(enabled, window));
-    await persist(enabled);
-  }, [computeAdaptiveScale, persist]);
+    await persist({ largeTextEnabled: enabled, notificationsEnabled });
+  }, [computeAdaptiveScale, persist, notificationsEnabled]);
 
   const toggleLargeText = useCallback(async () => {
     await setLargeText(!largeTextEnabled);
   }, [largeTextEnabled, setLargeText]);
 
+  const toggleNotifications = useCallback(async () => {
+    const nextState = !notificationsEnabled;
+    setNotificationsEnabled(nextState);
+    await persist({ largeTextEnabled, notificationsEnabled: nextState });
+  }, [notificationsEnabled, largeTextEnabled, persist]);
+
   const value = useMemo<SettingsContextType>(() => ({
     largeTextEnabled,
+    notificationsEnabled,
     textScale,
     toggleLargeText,
     setLargeText,
-  }), [largeTextEnabled, textScale, toggleLargeText, setLargeText]);
+    toggleNotifications,
+  }), [largeTextEnabled, notificationsEnabled, textScale, toggleLargeText, setLargeText, toggleNotifications]);
 
   // Respond to orientation and window size changes
   useEffect(() => {

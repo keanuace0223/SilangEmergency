@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons'
 import * as Contacts from 'expo-contacts'
 import * as ImagePicker from 'expo-image-picker'
+import * as Location from 'expo-location'
 import { useFocusEffect, useRouter } from 'expo-router'
 import React from 'react'
 import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
@@ -108,6 +109,31 @@ const CreateReport = () => {
     }
   }, [user?.id]);
 
+  const initCurrentLocationForReport = React.useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync()
+      if (status !== 'granted') {
+        return
+      }
+
+      let coords = (await Location.getLastKnownPositionAsync())?.coords
+
+      if (!coords) {
+        coords = (await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 5000,
+          distanceInterval: 0,
+        })).coords
+      }
+
+      if (!coords) return
+
+      setSelectedLocation({ latitude: coords.latitude, longitude: coords.longitude })
+    } catch (error) {
+      console.log('Failed to initialize current location for report', error)
+    }
+  }, [])
+
   useFocusEffect(
     React.useCallback(() => {
       // Reset core form and modal state whenever this screen gains focus
@@ -128,10 +154,12 @@ const CreateReport = () => {
         void fetchLimitStatus()
       }
 
+      void initCurrentLocationForReport()
+
       return () => {
         // No-op cleanup
       }
-    }, [user?.id, user?.contact_number, fetchLimitStatus])
+    }, [user?.id, user?.contact_number, fetchLimitStatus, initCurrentLocationForReport])
   )
 
   const formatContactNumberFromContact = (raw: string) => {
@@ -347,6 +375,7 @@ const CreateReport = () => {
         description,
         uploaded_media: [] as string[],
         incident_datetime: new Date().toISOString(),
+        status: 'PENDING' as const,
       }
 
       if (isOnline) {
@@ -489,6 +518,7 @@ const CreateReport = () => {
         description,
         uploaded_media: [] as string[],
         incident_datetime: new Date().toISOString(),
+        status: 'PENDING' as const,
       }
 
       // Save media files locally for draft
