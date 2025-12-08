@@ -317,7 +317,7 @@ export const db = {
         }
       }
     } catch {}
-    
+
     // Validate authUserId - if null, use provided userId
     if (!authUserId || authUserId === 'null') {
       if (__DEV__) console.warn('No authenticated user ID for reports, using provided userId:', userId);
@@ -345,17 +345,17 @@ export const db = {
     } catch (err) {
       if (__DEV__) console.warn('RPC app_get_my_reports exception:', err);
     }
-    
+
     // Try with authenticated user ID (direct query)
     if (__DEV__) console.log('Fetching reports with authUserId:', authUserId);
-    
+
     try {
       const { data, error } = await supabase
         .from('reports')
         .select('*')
         .eq('user_id', authUserId)
         .order('incident_datetime', { ascending: false });
-      
+
       if (error) {
         if (__DEV__) {
           console.error('Reports query error:', error);
@@ -371,7 +371,7 @@ export const db = {
         }
         return { data: [], error };
       }
-      
+
       if (data) {
         if (__DEV__) {
           console.log('Reports fetched via direct query:', data.length);
@@ -381,7 +381,7 @@ export const db = {
         }
         return { data, error: null };
       }
-      
+
       // No data and no error - might be empty or RLS issue
       if (__DEV__) {
         console.warn('No reports returned - might be RLS or no data exists');
@@ -395,51 +395,31 @@ export const db = {
     }
   },
 
-  getReport: async (id: string) => {
-    const { data, error } = await supabase
-      .from('reports')
-      .select('*')
-      .eq('id', id)
-      .single();
-    return { data, error };
-  },
+getReport: async (id: string) => {
+  const { data, error } = await supabase
+    .from('reports')
+    .select('*')
+    .eq('id', id)
+    .single();
+  return { data, error };
+},
 
-  createReport: async (reportData: Omit<Report, 'id' | 'created_at' | 'updated_at'>) => {
-    // Check report limit first
-    const { data: limitStatus, error: limitError } = await supabase.rpc('check_reports_last_hour', {
-      p_user_id: reportData.user_id
-    });
-    
-    if (limitError) {
-      return { data: null, error: limitError };
-    }
-    
-    const reportCount = limitStatus || 0;
-    
-    // Reject if limit reached (3 reports per hour)
-    if (reportCount >= 3) {
-      const error: any = new Error("You've reached your report limit. Please wait for the next hour.");
-      error.status = 429;
-      error.code = 'RATE_LIMIT_EXCEEDED';
-      return { data: null, error };
-    }
-    
-    // Determine report_type based on count
-    const reportType: 'official' | 'follow-up' = reportCount === 0 ? 'official' : 'follow-up';
+createReport: async (reportData: Omit<Report, 'id' | 'created_at' | 'updated_at'>) => {
+  // Always allow creating reports; no per-hour report limit.
+  const reportType: 'official' | 'follow-up' = 'official';
 
-    // Attach report_type only; urgency is now derived purely from patient_status at read time
-    const reportDataWithType = {
-      ...reportData,
-      report_type: reportType,
-    };
-    
-    const { data, error } = await supabase
-      .from('reports')
-      .insert(reportDataWithType)
-      .select()
-      .single();
-    return { data, error };
-  },
+  const reportDataWithType = {
+    ...reportData,
+    report_type: reportType,
+  };
+
+  const { data, error } = await supabase
+    .from('reports')
+    .insert(reportDataWithType)
+    .select()
+    .single();
+  return { data, error };
+},
 
   updateReport: async (id: string, updates: Partial<Report>) => {
     const { data, error } = await supabase
@@ -450,62 +430,10 @@ export const db = {
       .single();
     return { data, error };
   },
-
-  deleteReport: async (id: string) => {
-    const { error } = await supabase
-      .from('reports')
-      .delete()
-      .eq('id', id);
-    return { error };
-  },
-
-  getReportCount: async (userId: string) => {
-    const { count, error } = await supabase
-      .from('reports')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
-    return { count, error };
-  },
-
-  getReportLimitStatus: async (userId: string) => {
-    try {
-      // Get reports from last hour
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { data: reports, error } = await supabase
-        .from('reports')
-        .select('id', { count: 'exact', head: false })
-        .eq('user_id', userId)
-        .gte('created_at', oneHourAgo);
-      
-      if (error) {
-        console.warn('Failed to fetch report count:', error);
-        return { 
-          data: { count: 0, remaining: 3, limitReached: false, limit: 3 }, 
-          error 
-        };
-      }
-      
-      const count = reports?.length || 0;
-      const limit = 3;
-      const remaining = Math.max(0, limit - count);
-      const limitReached = count >= limit;
-      
-      return { 
-        data: { count, remaining, limitReached, limit },
-        error: null
-      };
-    } catch (err) {
-      console.warn('Error checking report limit:', err);
-      return { 
-        data: { count: 0, remaining: 3, limitReached: false, limit: 3 },
-        error: err as any
-      };
-    }
-  }
 };
 
 // Storage helpers
-export async function uploadProfileImage(userId: string, fileUri: string): Promise<{ path?: string; signedUrl?: string; error?: Error }>{
+export async function uploadProfileImage(userId: string, fileUri: string): Promise<{ path?: string; signedUrl?: string; error?: Error }> {
   try {
     const response = await fetch(fileUri);
     const arrayBuffer = await response.arrayBuffer();

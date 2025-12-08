@@ -1,6 +1,3 @@
-// Disable expo-notifications auto-registration for Expo Go
-(global as any).__expo_notifications_autotoken_registration_disabled = true;
-
 import * as NavigationBar from 'expo-navigation-bar';
 import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from 'expo-splash-screen';
@@ -11,6 +8,9 @@ import { SettingsProvider } from '../src/context/SettingsContext';
 import { SyncProvider } from '../src/context/SyncContext';
 import { UserProvider } from '../src/context/UserContext';
 import './global.css';
+
+// Disable expo-notifications auto-registration for Expo Go
+(global as any).__expo_notifications_autotoken_registration_disabled = true;
 
 // Prevent the splash screen from auto-hiding until auth/session is resolved
 SplashScreen.preventAutoHideAsync().catch(() => {});

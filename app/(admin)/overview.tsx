@@ -84,7 +84,6 @@ export default function AdminOverviewScreen() {
   }, [allReports]);
 
   const incidentEntries = useMemo(() => Object.entries(countsByIncident), [countsByIncident]);
-  const urgencyEntries = useMemo(() => Object.entries(countsByUrgency), [countsByUrgency]);
 
   // Helper function to get AVPU display info
   const getPatientStatusInfo = (status: string) => {

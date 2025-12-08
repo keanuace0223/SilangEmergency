@@ -41,13 +41,6 @@ const CreateReport = () => {
   const [patientStatus, setPatientStatus] = React.useState<'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | ''>('')
   const [othersSpecification, setOthersSpecification] = React.useState('')
   const [hasPatient, setHasPatient] = React.useState(false)
-  const [limitStatus, setLimitStatus] = React.useState<{
-    count: number;
-    remaining: number;
-    limitReached: boolean;
-    limit: number;
-  } | null>(null)
-  const [isLoadingLimit, setIsLoadingLimit] = React.useState(false)
   const [description, setDescription] = React.useState('')
   const [media, setMedia] = React.useState<{ uri: string; type?: string; isLoading?: boolean }[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -93,21 +86,6 @@ const CreateReport = () => {
     setModalVisible(true)
   }
 
-  // Fetch limit status when screen opens
-  const fetchLimitStatus = React.useCallback(async () => {
-    if (!user?.id) return;
-    
-    setIsLoadingLimit(true);
-    try {
-      const status = await api.reports.getHourlyStatus(user.id);
-      setLimitStatus(status);
-    } catch (error) {
-      console.warn('Failed to fetch limit status:', error);
-      setLimitStatus({ count: 0, remaining: 3, limitReached: false, limit: 3 });
-    } finally {
-      setIsLoadingLimit(false);
-    }
-  }, [user?.id]);
 
   const initCurrentLocationForReport = React.useCallback(async () => {
     try {
@@ -149,17 +127,12 @@ const CreateReport = () => {
         setContactNumber(user.contact_number || '')
       }
 
-      // Refresh limit status from the server on every focus
-      if (user?.id) {
-        void fetchLimitStatus()
-      }
-
       void initCurrentLocationForReport()
 
       return () => {
         // No-op cleanup
       }
-    }, [user?.id, user?.contact_number, fetchLimitStatus, initCurrentLocationForReport])
+    }, [user?.contact_number, initCurrentLocationForReport])
   )
 
   const formatContactNumberFromContact = (raw: string) => {
@@ -337,19 +310,6 @@ const CreateReport = () => {
         return
       }
 
-      // Check limit before submitting
-      const currentLimit = await api.reports.getHourlyStatus(user.id);
-      if (currentLimit.limitReached) {
-        showModal(
-          'Report limit reached',
-          'You\'ve reached your report limit of 3 reports per hour. Please wait before submitting another report.',
-          'warning',
-          '#EF4444'
-        );
-        setIsSubmitting(false);
-        await fetchLimitStatus(); // Refresh limit status
-        return;
-      }
 
       // Determine final patient status based on incident type
       let finalPatientStatus: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive' | 'No Patient' = 'No Patient'
@@ -408,25 +368,12 @@ const CreateReport = () => {
           }
           
           await api.reports.create(apiReportData, user.id)
-          await fetchLimitStatus(); // Refresh limit status after submission
           showModal('Report submitted', 'Your report has been submitted successfully.', 'checkmark-circle', '#16A34A')
           setTimeout(() => {
             resetForm()
             router.replace('/(tabs)/reports')
           }, 1500)
         } catch (error: any) {
-          // Handle 429 rate limit error
-          if (error?.status === 429 || error?.code === 'RATE_LIMIT_EXCEEDED') {
-            showModal(
-              'Report limit reached',
-              error.message || 'You\'ve reached your report limit of 3 reports per hour. Please wait before submitting another report.',
-              'warning',
-              '#EF4444'
-            );
-            await fetchLimitStatus(); // Refresh limit status
-            setIsSubmitting(false);
-            return;
-          }
           // If online submission fails, fall back to offline storage
           console.warn('Online submission failed, saving offline:', error)
           await saveOfflineReport(reportData)
@@ -436,18 +383,8 @@ const CreateReport = () => {
         await saveOfflineReport(reportData)
       }
     } catch (error: any) {
-      if (error?.status === 429 || error?.code === 'RATE_LIMIT_EXCEEDED') {
-        showModal(
-          'Report limit reached',
-          error.message || 'You\'ve reached your report limit of 3 reports per hour. Please wait before submitting another report.',
-          'warning',
-          '#EF4444'
-        );
-        await fetchLimitStatus(); // Refresh limit status
-      } else {
-        const msg = error instanceof Error ? error.message : 'Failed to submit report'
-        showModal('Submission error', msg, 'warning', '#EF4444')
-      }
+      const msg = error instanceof Error ? error.message : 'Failed to submit report'
+      showModal('Submission error', msg, 'warning', '#EF4444')
     } finally {
       setIsSubmitting(false)
     }
@@ -839,35 +776,6 @@ const CreateReport = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Limit Status Display */}
-          {limitStatus && (
-            <View className={`mx-4 mb-4 p-3 rounded-lg border-2 ${
-              limitStatus.limitReached 
-                ? 'bg-red-50 border-red-300' 
-                : limitStatus.remaining === 1
-                ? 'bg-yellow-50 border-yellow-300'
-                : 'bg-blue-50 border-blue-300'
-            }`}>
-              <View className="flex-row items-center justify-between">
-                <ScaledText baseSize={14} className={`font-semibold ${
-                  limitStatus.limitReached ? 'text-red-800' : 'text-gray-800'
-                }`}>
-                  {limitStatus.limitReached 
-                    ? 'Report limit reached'
-                    : `You have ${limitStatus.remaining} of ${limitStatus.limit} reports left this hour.`
-                  }
-                </ScaledText>
-                {isLoadingLimit && (
-                  <ActivityIndicator size="small" color="#4A90E2" />
-                )}
-              </View>
-              {limitStatus.limitReached && (
-                <ScaledText baseSize={12} className="text-red-600 mt-1">
-                  Please wait before submitting another report.
-                </ScaledText>
-              )}
-            </View>
-          )}
 
           {/* Conditional Urgency/Patient Status based on incident type */}
           {incidentType === 'Vehicular Accident' ? (
@@ -1055,14 +963,14 @@ const CreateReport = () => {
             <ScaledText baseSize={16} className="text-white font-semibold">{isSubmitting ? 'Saving...' : 'Save Draft'}</ScaledText>
           </TouchableOpacity>
           <TouchableOpacity 
-            disabled={isSubmitting || (limitStatus?.limitReached ?? false)} 
+            disabled={isSubmitting}
             onPress={handleSave} 
             className={`flex-1 h-12 rounded-xl items-center justify-center ${
-              (isSubmitting || (limitStatus?.limitReached ?? false)) ? 'bg-gray-400' : 'bg-[#4A90E2]'
+              isSubmitting ? 'bg-gray-400' : 'bg-[#4A90E2]'
             }`}
           >
             <ScaledText baseSize={16} className="text-white font-semibold">
-              {isSubmitting ? 'Submitting...' : (limitStatus?.limitReached ? 'Limit Reached' : 'Submit')}
+              {isSubmitting ? 'Submitting...' : 'Submit'}
             </ScaledText>
           </TouchableOpacity>
         </View>

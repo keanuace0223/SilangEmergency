@@ -34,8 +34,6 @@ export default function AdminUsersScreen() {
   const [showPositionMenu, setShowPositionMenu] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [confirmUser, setConfirmUser] = useState<AdminUser | null>(null);
-  const [isResettingLimit, setIsResettingLimit] = useState(false);
 
   const [messageModalVisible, setMessageModalVisible] = useState(false);
   const [messageModalTitle, setMessageModalTitle] = useState('');
@@ -142,35 +140,6 @@ export default function AdminUsersScreen() {
     }
   };
 
-  const handleResetLimit = async () => {
-    if (!confirmUser) return;
-    
-    setIsResettingLimit(true);
-    try {
-      const result = await adminApi.resetUserReportLimit(confirmUser.id);
-      
-      if (result.success) {
-        setConfirmUser(null);
-        showMessageModal(
-          'Success',
-          `Report limit reset successfully. ${result.count} report${result.count !== 1 ? 's' : ''} moved outside the hourly window.`,
-          'checkmark-circle',
-          '#10B981',
-        );
-      } else {
-        showMessageModal('Error', 'Failed to reset report limit. Please try again.', 'warning', '#EF4444');
-      }
-    } catch (error: any) {
-      showMessageModal(
-        'Error',
-        error?.message || 'Failed to reset report limit. Please try again.',
-        'warning',
-        '#EF4444',
-      );
-    } finally {
-      setIsResettingLimit(false);
-    }
-  };
 
   const handleForceLogout = (user: AdminUser) => {
     showMessageModal(
@@ -334,12 +303,6 @@ export default function AdminUsersScreen() {
                     <Ionicons name="document-text" size={18} color="#2563EB" />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => setConfirmUser(item)}
-                    className="w-9 h-9 rounded-full bg-orange-50 items-center justify-center border border-orange-200"
-                  >
-                    <Ionicons name="refresh" size={18} color="#EA580C" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
                     onPress={() => handleForceLogout(item)}
                     className="w-9 h-9 rounded-full bg-yellow-50 items-center justify-center border border-yellow-200"
                   >
@@ -358,28 +321,7 @@ export default function AdminUsersScreen() {
         </ScrollView>
       )}
 
-      {/* Reset Limit Confirmation Modal */}
-      <AppModal
-        visible={confirmUser !== null}
-        onClose={() => !isResettingLimit && setConfirmUser(null)}
-        icon="alert-circle"
-        iconColor="#F59E0B"
-        title="Reset Report Limit?"
-        message={confirmUser ? `Are you sure you want to reset the hourly report limit for ${confirmUser.name}? This will allow them to submit 3 more reports immediately.` : ''}
-        actions={[
-          {
-            label: 'Cancel',
-            onPress: () => setConfirmUser(null),
-            variant: 'secondary'
-          },
-          {
-            label: isResettingLimit ? 'Resetting...' : 'Confirm',
-            onPress: handleResetLimit,
-            variant: 'primary',
-            disabled: isResettingLimit
-          }
-        ]}
-      />
+      {/* Reset report limit feature removed; generic message modal remains below. */}
 
       {/* Generic message/confirmation modal */}
       <AppModal

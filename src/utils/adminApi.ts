@@ -571,51 +571,8 @@ class AdminApiService {
     }
   }
 
-  // Reset user report limit by moving their recent reports' created_at timestamps to 2 hours ago
-  async resetUserReportLimit(userId: string): Promise<{ success: boolean; count: number }> {
-    try {
-      // Calculate timestamps
-      const now = new Date();
-      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000); // 1 hour ago
-      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000); // 2 hours ago
-
-      // Find all reports created in the last hour
-      const { data: reports, error: fetchError } = await supabaseAdmin
-        .from('reports')
-        .select('id')
-        .eq('user_id', userId)
-        .gte('created_at', oneHourAgo.toISOString());
-
-      if (fetchError) {
-        throw new Error(`Failed to fetch reports: ${fetchError.message}`);
-      }
-
-      if (!reports || reports.length === 0) {
-        return { success: true, count: 0 };
-      }
-
-      // Update all found reports to have created_at = 2 hours ago
-      // This effectively removes them from the hourly count
-      const reportIds = reports.map(r => r.id);
-      const { error: updateError } = await supabaseAdmin
-        .from('reports')
-        .update({ created_at: twoHoursAgo.toISOString() })
-        .in('id', reportIds);
-
-      if (updateError) {
-        throw new Error(`Failed to update reports: ${updateError.message}`);
-      }
-
-      return {
-        success: true,
-        count: reports.length
-      };
-    } catch (error) {
-      console.error('Error resetting user report limit:', error);
-      throw error;
-    }
-  }
 }
+
 
 // Export singleton instance
 export const adminApi = new AdminApiService();

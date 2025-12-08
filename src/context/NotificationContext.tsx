@@ -29,7 +29,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
         case 'ACKNOWLEDGED':
           return 'Report Accepted. We have received and acknowledged your report.';
         case 'ON_GOING':
-          return 'Responders Dispatched. An ambulance/response team is on the way.';
+          return null;
         case 'RESOLVED':
           return 'Case Closed. Thank you for using Silang Emergency.';
         default:

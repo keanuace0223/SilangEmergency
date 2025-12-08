@@ -45,7 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try {
               // Clear local storage to remove invalid tokens
               await supabase.auth.signOut();
-            } catch (signOutError) {
+            } catch {
               // Ignore sign out errors
             }
             setFromSession(null);
@@ -83,7 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
           try {
             await supabase.auth.signOut();
-          } catch (signOutError) {
+          } catch {
             // Ignore sign out errors
           }
           setFromSession(null);
