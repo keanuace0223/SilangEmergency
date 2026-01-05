@@ -51,9 +51,9 @@ export const api = {
         description: reportData.description,
         uploaded_media: reportData.mediaUrls || [],
         incident_datetime: new Date().toISOString(),
-        status: 'PENDING' // Add default status
-      });
-      
+        status: 'PENDING', // Add default status
+      } as any);
+
       if (error) {
         throw new Error(error.message);
       }

@@ -17,7 +17,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const createStorageAdapter = () => {
   // Check if we're in Node.js environment (Metro bundler/server-side)
   const isNodeEnv = typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
-  
+
   // Return AsyncStorage adapter for React Native runtime
   return {
     getItem: async (key: string) => {
@@ -99,6 +99,10 @@ export interface Report {
   status: 'PENDING' | 'ACKNOWLEDGED' | 'ON_GOING' | 'RESOLVED' | 'DECLINED';
   created_at?: string;
   updated_at?: string;
+  accepted_at?: string;
+  dispatched_at?: string;
+  resolved_at?: string;
+  declined_at?: string;
 }
 
 // Auth functions
@@ -187,20 +191,20 @@ export const db = {
     } catch (err) {
       if (__DEV__) console.warn('Failed to get auth session in getUser:', err);
     }
-    
+
     // Validate authUserId before using it
     if (!authUserId || authUserId === 'null') {
       if (__DEV__) console.warn('No authenticated user ID, using provided ID:', id);
       authUserId = id;
     }
-    
+
     // Ensure authUserId is valid UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(authUserId)) {
       if (__DEV__) console.warn('authUserId is not valid UUID format:', authUserId);
       return { data: null, error: { message: 'Invalid user ID format' } as any };
     }
-    
+
     // Try with authenticated user ID first - use explicit UUID cast
     try {
       const { data, error } = await supabase
@@ -208,7 +212,7 @@ export const db = {
         .select('*')
         .eq('id', authUserId)
         .single();
-      
+
       if (__DEV__) {
         if (error) {
           // Only log errors that aren't "0 rows" (expected if profile doesn't exist yet)
@@ -222,11 +226,11 @@ export const db = {
           // Don't warn about no data - it's expected if profile doesn't exist
         }
       }
-      
+
       if (!error && data) {
         return { data, error: null };
       }
-      
+
       // If that fails and IDs are different, try with provided ID
       if (error && id !== authUserId && uuidRegex.test(id)) {
         const altQuery = await supabase
@@ -236,7 +240,7 @@ export const db = {
           .single();
         return { data: altQuery.data, error: altQuery.error };
       }
-      
+
       return { data, error };
     } catch (err) {
       if (__DEV__) console.error('getUser exception:', err);
@@ -273,18 +277,18 @@ export const db = {
       barangay_position: profile.barangay_position || '',
       profile_pic: profile.profile_pic || null,
     };
-    
+
     if (__DEV__) {
       console.log('Upserting user profile:', userProfile.id, userProfile.userid, userProfile.name);
     }
-    
+
     // Try upsert first
     const { data, error } = await supabase
       .from('users')
       .upsert(userProfile, { onConflict: 'id' })
       .select()
       .single();
-    
+
     // If RLS blocks the upsert, it's OK - the profile might already exist
     // The app will still work if profile exists, just can't create/update during sign-in
     if (error) {
@@ -297,7 +301,7 @@ export const db = {
         }
       }
     }
-    
+
     return { data, error };
   },
 
@@ -316,7 +320,7 @@ export const db = {
           authUserId = userData.user.id;
         }
       }
-    } catch {}
+    } catch { }
 
     // Validate authUserId - if null, use provided userId
     if (!authUserId || authUserId === 'null') {
@@ -395,31 +399,31 @@ export const db = {
     }
   },
 
-getReport: async (id: string) => {
-  const { data, error } = await supabase
-    .from('reports')
-    .select('*')
-    .eq('id', id)
-    .single();
-  return { data, error };
-},
+  getReport: async (id: string) => {
+    const { data, error } = await supabase
+      .from('reports')
+      .select('*')
+      .eq('id', id)
+      .single();
+    return { data, error };
+  },
 
-createReport: async (reportData: Omit<Report, 'id' | 'created_at' | 'updated_at'>) => {
-  // Always allow creating reports; no per-hour report limit.
-  const reportType: 'official' | 'follow-up' = 'official';
+  createReport: async (reportData: Omit<Report, 'id' | 'created_at' | 'updated_at'>) => {
+    // Always allow creating reports; no per-hour report limit.
+    const reportType: 'official' | 'follow-up' = 'official';
 
-  const reportDataWithType = {
-    ...reportData,
-    report_type: reportType,
-  };
+    const reportDataWithType = {
+      ...reportData,
+      report_type: reportType,
+    };
 
-  const { data, error } = await supabase
-    .from('reports')
-    .insert(reportDataWithType)
-    .select()
-    .single();
-  return { data, error };
-},
+    const { data, error } = await supabase
+      .from('reports')
+      .insert(reportDataWithType)
+      .select()
+      .single();
+    return { data, error };
+  },
 
   updateReport: async (id: string, updates: Partial<Report>) => {
     const { data, error } = await supabase
@@ -470,7 +474,7 @@ export async function uploadProfileImage(userId: string, fileUri: string): Promi
   }
 }
 
-export async function getSignedAvatarUrl(filePath: string, expiresInSeconds = 24 * 60 * 60): Promise<{ url?: string; error?: Error }>{
+export async function getSignedAvatarUrl(filePath: string, expiresInSeconds = 24 * 60 * 60): Promise<{ url?: string; error?: Error }> {
   try {
     const { data, error } = await supabase.storage
       .from(AVATAR_BUCKET)
@@ -482,7 +486,7 @@ export async function getSignedAvatarUrl(filePath: string, expiresInSeconds = 24
   }
 }
 
-export async function deleteAvatar(filePath: string): Promise<{ error?: Error }>{
+export async function deleteAvatar(filePath: string): Promise<{ error?: Error }> {
   try {
     const { error } = await supabase.storage.from(AVATAR_BUCKET).remove([filePath]);
     if (error) return { error: error as any };
@@ -498,7 +502,7 @@ async function uriToArrayBuffer(fileUri: string): Promise<ArrayBuffer> {
   try {
     const res = await fetch(fileUri);
     return await res.arrayBuffer();
-  } catch {}
+  } catch { }
   // Fallback to Expo FileSystem for content:// and other URIs
   try {
     const FileSystem = await import('expo-file-system');
@@ -510,7 +514,7 @@ async function uriToArrayBuffer(fileUri: string): Promise<ArrayBuffer> {
   }
 }
 
-export async function uploadReportMedia(userId: string, fileUri: string): Promise<{ url?: string; path?: string; error?: Error }>{
+export async function uploadReportMedia(userId: string, fileUri: string): Promise<{ url?: string; path?: string; error?: Error }> {
   try {
     const arrayBuffer = await uriToArrayBuffer(fileUri);
     const uriLower = fileUri.toLowerCase();
@@ -543,7 +547,7 @@ export async function uploadReportMedia(userId: string, fileUri: string): Promis
   }
 }
 
-export async function uploadMultipleReportMedia(userId: string, fileUris: string[]): Promise<{ urls: string[]; errors: string[] }>{
+export async function uploadMultipleReportMedia(userId: string, fileUris: string[]): Promise<{ urls: string[]; errors: string[] }> {
   const results = await Promise.allSettled(fileUris.map(uri => uploadReportMedia(userId, uri)));
   const urls: string[] = [];
   const errors: string[] = [];

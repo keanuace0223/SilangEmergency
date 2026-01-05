@@ -129,9 +129,9 @@ const Reports = () => {
     try {
       if (!user?.id) { setReports([]); return }
       setIsLoading(true)
-      
+
       let onlineReports: any[] = []
-      
+
       // Fetch online reports if connected
       if (isOnline) {
         try {
@@ -140,15 +140,15 @@ const Reports = () => {
           console.warn('Failed to fetch online reports:', error)
         }
       }
-      
+
       // Note: We don't include offline reports in the main reports list anymore
       // because synced offline reports should already be on the server and fetched as online reports
       // This prevents duplicates
-      
+
       // Use only online reports (which includes previously synced offline reports)
       const allReports = onlineReports
         .sort((a, b) => new Date(b.incident_datetime).getTime() - new Date(a.incident_datetime).getTime())
-      
+
       setReports(allReports)
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Failed to fetch reports'
@@ -204,7 +204,7 @@ const Reports = () => {
               return [payload.new, ...currentReports];
             }
             if (payload.eventType === 'UPDATE') {
-              return currentReports.map(report => 
+              return currentReports.map(report =>
                 report.id === payload.new.id ? payload.new : report
               );
             }
@@ -297,7 +297,7 @@ const Reports = () => {
     if (!item.isOffline) {
       return { color: '#10B981', icon: 'checkmark-circle', text: 'SYNCED' }
     }
-    
+
     switch (item.sync_status) {
       case 'pending':
         return { color: '#F59E0B', icon: 'time', text: 'PENDING' }
@@ -317,7 +317,7 @@ const Reports = () => {
     const syncInfo = getSyncStatusInfo(item)
     const statusInfo = getPatientStatusInfo(item.patient_status || 'No Patient');
     const badgeInfo = getStatusBadgeInfo(item.status || 'PENDING');
-    
+
     return (
       <TouchableOpacity
         onPress={() => handleReportPress(item)}
@@ -465,7 +465,7 @@ const Reports = () => {
     <SafeAreaView className={`flex-1 bg-gray-50`}>
       <View className={`flex-1 bg-gray-50 pt-4`} style={{ paddingBottom: insets.bottom }}>
         {/* Header */}
-          <View className={`bg-white px-6 py-6 border-b border-gray-100 shadow-sm`} style={{ paddingHorizontal: s(32), paddingVertical: s(32) }}>
+        <View className={`bg-white px-6 py-6 border-b border-gray-100 shadow-sm`} style={{ paddingHorizontal: s(32), paddingVertical: s(32) }}>
           <View className="flex-row items-center justify-between">
             <View className="flex-1 self-center p-2 mt-4 flex-row items-center">
               <Image source={images.logo} style={{ width: Math.round(70 * Math.min(textScale, 1.25)), height: Math.round(70 * Math.min(textScale, 1.25)), resizeMode: 'contain', marginRight: s(20) }} />
@@ -476,7 +476,7 @@ const Reports = () => {
                 </Subtitle>
               </View>
             </View>
-            <SyncStatusIndicator 
+            <SyncStatusIndicator
               compact={true}
               onPress={() => {
                 if (!isOnline) {
@@ -498,7 +498,7 @@ const Reports = () => {
         </View>
 
         {/* Offline Mode Banner */}
-        <OfflineModeBanner 
+        <OfflineModeBanner
           onRetryPress={() => {
             retryFailedReports().then(result => {
               if (result.success) {
@@ -551,7 +551,7 @@ const Reports = () => {
                 {reports.length === 0 ? 'No Reports Yet' : 'No Reports'}
               </ScaledText>
               <ScaledText baseSize={16} className={`text-center leading-6 px-2 text-gray-500`}>
-                {reports.length === 0 
+                {reports.length === 0
                   ? 'Tap the + button below to create your first emergency report'
                   : 'Create a new report'}
               </ScaledText>
@@ -738,9 +738,25 @@ const Reports = () => {
                   <View className="flex-row justify-between">
                     <ScaledText baseSize={14} className={'text-gray-600'}>Submitted:</ScaledText>
                     <ScaledText baseSize={16} className={`font-medium text-gray-900`}>
-                      {new Date(selectedReport.incident_datetime).toLocaleDateString()} at {new Date(selectedReport.incident_datetime).toLocaleTimeString()}
+                      {formatTimestamp(selectedReport.incident_datetime)}
                     </ScaledText>
                   </View>
+                  {selectedReport.accepted_at && (
+                    <View className="flex-row justify-between">
+                      <ScaledText baseSize={14} className={'text-gray-600'}>Accepted:</ScaledText>
+                      <ScaledText baseSize={16} className={`font-medium text-gray-900`}>
+                        {formatTimestamp(selectedReport.accepted_at)}
+                      </ScaledText>
+                    </View>
+                  )}
+                  {selectedReport.dispatched_at && (
+                    <View className="flex-row justify-between">
+                      <ScaledText baseSize={14} className={'text-gray-600'}>Dispatched:</ScaledText>
+                      <ScaledText baseSize={16} className={`font-medium text-gray-900`}>
+                        {formatTimestamp(selectedReport.dispatched_at)}
+                      </ScaledText>
+                    </View>
+                  )}
                   <View className="flex-row justify-between">
                     <ScaledText baseSize={14} className={'text-gray-600'}>Patient Status (AVPU):</ScaledText>
                     <ScaledText baseSize={16} className={`font-medium text-gray-900`}>
@@ -793,7 +809,7 @@ const Reports = () => {
             <View className="absolute bottom-0 left-0 right-0 z-10 bg-black bg-opacity-50 py-4">
               <View className="flex-row justify-center space-x-2">
                 {imageViewerImages.map((_, index) => (
-                  <View key={index} className={`w-2 h-2 rounded-full ${ index === selectedImageIndex ? 'bg-white' : 'bg-white bg-opacity-50' }`} />
+                  <View key={index} className={`w-2 h-2 rounded-full ${index === selectedImageIndex ? 'bg-white' : 'bg-white bg-opacity-50'}`} />
                 ))}
               </View>
             </View>

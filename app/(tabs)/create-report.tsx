@@ -12,7 +12,7 @@ import ScaledText from '../../components/ScaledText'
 import { api } from '../../src/api/client'
 import { useSync } from '../../src/context/SyncContext'
 import { useUser } from '../../src/context/UserContext'
-import { uploadMultipleReportMedia } from '../../src/lib/supabase'
+import { supabase, uploadMultipleReportMedia } from '../../src/lib/supabase'
 import { compressImage } from '../../src/utils/imageOptimizer'
 import { offlineStorage } from '../../src/utils/offlineStorage'
 
@@ -21,6 +21,39 @@ type ModalAction = {
   onPress?: () => void
   variant?: 'primary' | 'secondary' | 'danger'
   disabled?: boolean
+}
+
+const toRadians = (degrees: number) => (degrees * Math.PI) / 180
+
+const haversineDistanceMeters = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+) => {
+  const R = 6371000
+  const dLat = toRadians(lat2 - lat1)
+  const dLon = toRadians(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) *
+    Math.cos(toRadians(lat2)) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
+const parseLocationCoordinates = (location: string) => {
+  if (!location) return null as { latitude: number; longitude: number } | null
+  const parts = location.split(',')
+  if (parts.length < 2) return null as { latitude: number; longitude: number } | null
+  const lat = parseFloat(parts[0].trim())
+  const lon = parseFloat(parts[1].trim())
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return null as { latitude: number; longitude: number } | null
+  }
+  return { latitude: lat, longitude: lon }
 }
 
 const CreateReport = () => {
@@ -32,7 +65,17 @@ const CreateReport = () => {
   const descriptionInputRef = React.useRef<TextInput>(null)
   const descriptionYPosition = React.useRef<number>(0)
 
-  const [incidentType, setIncidentType] = React.useState<'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical' | 'Others' | ''>('')
+  const [incidentType, setIncidentType] = React.useState<
+    | 'Fire'
+    | 'Vehicular Accident'
+    | 'Flood'
+    | 'Earthquake'
+    | 'Electrical'
+    | 'OB'
+    | 'Stand By'
+    | 'Others'
+    | ''
+  >('')
   const [showIncidentMenu, setShowIncidentMenu] = React.useState(false)
   const [showLocationPicker, setShowLocationPicker] = React.useState(false)
   const [selectedLocation, setSelectedLocation] = React.useState<{ latitude: number; longitude: number; address?: string } | null>(null)
@@ -216,13 +259,13 @@ const CreateReport = () => {
     setSelectedLocation(null)
     setOthersSpecification('')
     setHasPatient(false)
-     setIsOptimizingImages(false)
-     setShowConfirmSubmit(false)
-     setShowConfirmDraft(false)
-     setShowContactModal(false)
-     setShowLocationPicker(false)
-     setModalVisible(false)
-     setMediaModalVisible(false)
+    setIsOptimizingImages(false)
+    setShowConfirmSubmit(false)
+    setShowConfirmDraft(false)
+    setShowContactModal(false)
+    setShowLocationPicker(false)
+    setModalVisible(false)
+    setMediaModalVisible(false)
   }
 
   const handleClose = () => {
@@ -326,16 +369,69 @@ const CreateReport = () => {
         }
       }
 
+      const incidentTypeForDb =
+        incidentType === 'Others'
+          ? othersSpecification.trim()
+          : (incidentType as
+            | 'Fire'
+            | 'Vehicular Accident'
+            | 'Flood'
+            | 'Earthquake'
+            | 'Electrical'
+            | 'OB'
+            | 'Stand By')
+
+      const locationString = selectedLocation
+        ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}`
+        : location
+
+      let isDuplicateReport = false
+
+      // Duplicate Detection: Check for existing active reports with same incident type within 100m
+      if (isOnline && selectedLocation) {
+        try {
+          const { data: existingReports, error: existingError } = await supabase
+            .from('reports')
+            .select('id, user_id, incident_type, location, status')
+            .in('status', ['PENDING', 'ACKNOWLEDGED', 'ON_GOING'])
+            .neq('user_id', user.id)
+            .eq('incident_type', incidentTypeForDb)
+
+          if (!existingError && existingReports && existingReports.length > 0) {
+            const radiusMeters = 100
+            for (const r of existingReports as any[]) {
+              const coords = parseLocationCoordinates(r.location)
+              if (!coords) continue
+              const distance = haversineDistanceMeters(
+                selectedLocation.latitude,
+                selectedLocation.longitude,
+                coords.latitude,
+                coords.longitude,
+              )
+              if (distance <= radiusMeters) {
+                isDuplicateReport = true
+                break
+              }
+            }
+          }
+        } catch (e) {
+          console.log('Duplicate report check failed', e)
+        }
+      }
+
+      // Determine final status: DECLINED if duplicate, PENDING otherwise
+      const finalStatus = isDuplicateReport ? 'DECLINED' : 'PENDING'
+
       const reportData = {
         user_id: user.id,
-        incident_type: incidentType === 'Others' ? othersSpecification : (incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical'),
-        location: selectedLocation ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}` : location,
+        incident_type: incidentTypeForDb,
+        location: locationString,
         contact_number: contactNumber,
         patient_status: finalPatientStatus as any,
         description,
         uploaded_media: [] as string[],
         incident_datetime: new Date().toISOString(),
-        status: 'PENDING' as const,
+        status: finalStatus,
       }
 
       if (isOnline) {
@@ -357,16 +453,16 @@ const CreateReport = () => {
               showModal('Note', `${skippedVideos} video${skippedVideos > 1 ? 's' : ''} skipped for upload. Images uploaded successfully.`, 'information-circle', '#2563EB')
             }
           }
-          
+
           const apiReportData = {
             incidentType: reportData.incident_type,
             location: reportData.location,
             contactNumber: reportData.contact_number,
             patientStatus: reportData.patient_status,
             description: reportData.description,
-            mediaUrls
+            mediaUrls,
           }
-          
+
           await api.reports.create(apiReportData, user.id)
           showModal('Report submitted', 'Your report has been submitted successfully.', 'checkmark-circle', '#16A34A')
           setTimeout(() => {
@@ -405,11 +501,11 @@ const CreateReport = () => {
       }
 
       await offlineStorage.saveOfflineReport(offlineReportData)
-      
-      const message = isOnline 
+
+      const message = isOnline
         ? 'Report saved offline and will sync automatically.'
         : 'Report saved offline. It will sync when you\'re back online.'
-      
+
       showModal('Report saved', message, 'checkmark-circle', '#16A34A')
       setTimeout(() => {
         resetForm()
@@ -448,8 +544,20 @@ const CreateReport = () => {
 
       const reportData = {
         user_id: user.id,
-        incident_type: incidentType === 'Others' ? othersSpecification : (incidentType as 'Fire' | 'Vehicular Accident' | 'Flood' | 'Earthquake' | 'Electrical'),
-        location: selectedLocation ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}` : location,
+        incident_type:
+          incidentType === 'Others'
+            ? othersSpecification.trim()
+            : (incidentType as
+              | 'Fire'
+              | 'Vehicular Accident'
+              | 'Flood'
+              | 'Earthquake'
+              | 'Electrical'
+              | 'OB'
+              | 'Stand By'),
+        location: selectedLocation
+          ? `${selectedLocation.latitude.toFixed(4)}, ${selectedLocation.longitude.toFixed(4)}`
+          : location,
         contact_number: contactNumber,
         patient_status: finalPatientStatus as any,
         description,
@@ -470,7 +578,7 @@ const CreateReport = () => {
       }
 
       await offlineStorage.saveDraft(draftData)
-      
+
       showModal('Draft saved', 'Your report has been saved as a draft. You can edit or submit it later from the Drafts screen.', 'checkmark-circle', '#16A34A')
       setTimeout(() => {
         resetForm()
@@ -603,7 +711,7 @@ const CreateReport = () => {
     const baseClassName = 'flex-1 min-w-[48%] rounded-xl border p-3'
     const selectedClassName = 'shadow-lg'
     const unselectedClassName = 'bg-white border-gray-300'
-    
+
     return (
       <TouchableOpacity
         onPress={onPress}
@@ -642,26 +750,26 @@ const CreateReport = () => {
       </TouchableOpacity>
     )
   }
-  
+
   AVPUButtonComponent.displayName = 'AVPUButton'
-  
+
   const AVPUButton = React.memo(AVPUButtonComponent)
 
   // (Urgency buttons removed; app now relies solely on patient_status AVPU and 'No Patient')
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       className="flex-1 bg-white"
     >
       <View className="flex-1">
         {/* HEADER */}
-        <View 
+        <View
           className="flex-row items-center justify-between border-b border-gray-200 px-4"
-          style={{ 
+          style={{
             paddingTop: insets.top + 8,
-            paddingBottom: 16 
+            paddingBottom: 16
           }}
         >
           <TouchableOpacity onPress={handleClose} className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center">
@@ -672,14 +780,14 @@ const CreateReport = () => {
         </View>
 
         {/* SCROLLABLE FORM CONTENT */}
-        <ScrollView 
+        <ScrollView
           ref={scrollViewRef}
           className="flex-1"
-          contentContainerStyle={{ 
+          contentContainerStyle={{
             paddingHorizontal: 20,
             paddingTop: 16,
             paddingBottom: 400 // Increased significantly to account for keyboard + footer + safe area
-          }} 
+          }}
           showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled={true}
@@ -691,24 +799,28 @@ const CreateReport = () => {
               <View className="flex-row items-center justify-between">
                 <View className="flex-row items-center flex-1">
                   {incidentType && (
-                    <Ionicons 
+                    <Ionicons
                       name={
                         incidentType === 'Fire' ? 'flame' :
-                        incidentType === 'Vehicular Accident' ? 'car' :
-                        incidentType === 'Flood' ? 'water' :
-                        incidentType === 'Earthquake' ? 'earth' :
-                        incidentType === 'Electrical' ? 'flash' :
-                        incidentType === 'Others' ? 'help-circle-outline' : 'help'
-                      } 
-                      size={20} 
+                          incidentType === 'Vehicular Accident' ? 'car' :
+                            incidentType === 'Flood' ? 'water' :
+                              incidentType === 'Earthquake' ? 'earth' :
+                                incidentType === 'Electrical' ? 'flash' :
+                                  incidentType === 'OB' ? 'briefcase' :
+                                    incidentType === 'Stand By' ? 'time' :
+                                      incidentType === 'Others' ? 'help-circle-outline' : 'help'
+                      }
+                      size={20}
                       color={
                         incidentType === 'Fire' ? '#FF6B35' :
-                        incidentType === 'Vehicular Accident' ? '#FF4444' :
-                        incidentType === 'Flood' ? '#4A90E2' :
-                        incidentType === 'Earthquake' ? '#8B4513' :
-                        incidentType === 'Electrical' ? '#FFD700' :
-                        incidentType === 'Others' ? '#6B7280' : '#666'
-                      } 
+                          incidentType === 'Vehicular Accident' ? '#FF4444' :
+                            incidentType === 'Flood' ? '#4A90E2' :
+                              incidentType === 'Earthquake' ? '#8B4513' :
+                                incidentType === 'Electrical' ? '#FFD700' :
+                                  incidentType === 'OB' ? '#2563EB' :
+                                    incidentType === 'Stand By' ? '#10B981' :
+                                      incidentType === 'Others' ? '#6B7280' : '#666'
+                      }
                     />
                   )}
                   <ScaledText baseSize={16} className="ml-3 text-black">
@@ -726,10 +838,12 @@ const CreateReport = () => {
                   { type: 'Flood', icon: 'water' as const, color: '#4A90E2' },
                   { type: 'Earthquake', icon: 'earth' as const, color: '#8B4513' },
                   { type: 'Electrical', icon: 'flash' as const, color: '#FFD700' },
-                  { type: 'Others', icon: 'help-circle-outline' as const, color: '#6B7280' }
+                  { type: 'OB', icon: 'briefcase' as const, color: '#2563EB' },
+                  { type: 'Stand By', icon: 'time' as const, color: '#10B981' },
+                  { type: 'Others', icon: 'help-circle-outline' as const, color: '#6B7280' },
                 ].map(opt => (
-                  <TouchableOpacity key={opt.type} className={`px-4 py-4 flex-row items-center active:bg-gray-50`} onPress={() => { 
-                    setIncidentType(opt.type as any); 
+                  <TouchableOpacity key={opt.type} className={`px-4 py-4 flex-row items-center active:bg-gray-50`} onPress={() => {
+                    setIncidentType(opt.type as any);
                     setShowIncidentMenu(false);
                     // Reset urgency/patient status when changing incident type
                     setPatientStatus('')
@@ -784,9 +898,9 @@ const CreateReport = () => {
               <View className="mb-4">
                 <View className="flex-row flex-wrap gap-2 mb-2">
                   {avpuOptions.map(opt => (
-                    <AVPUButton 
-                      key={opt.status} 
-                      opt={opt} 
+                    <AVPUButton
+                      key={opt.status}
+                      opt={opt}
                       isSelected={patientStatus === opt.status}
                       onPress={() => setPatientStatus(opt.status)}
                     />
@@ -794,9 +908,9 @@ const CreateReport = () => {
                 </View>
               </View>
             </>
-          ) : incidentType === 'Fire' || incidentType === 'Flood' || incidentType === 'Earthquake' || incidentType === 'Electrical' || incidentType === 'Others' ? (
+          ) : incidentType === 'Fire' || incidentType === 'Flood' || incidentType === 'Earthquake' || incidentType === 'Electrical' || incidentType === 'OB' || incidentType === 'Stand By' || incidentType === 'Others' ? (
             <>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setHasPatient(!hasPatient)}
                 activeOpacity={1}
                 className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200 flex-row items-center"
@@ -810,16 +924,16 @@ const CreateReport = () => {
                   Patient involved in this incident
                 </ScaledText>
               </TouchableOpacity>
-              
+
               {hasPatient && (
                 <>
                   <ScaledText baseSize={14} className="mb-1 text-gray-600">Patient Status (AVPU)</ScaledText>
                   <View className="mb-4">
                     <View className="flex-row flex-wrap gap-2 mb-2">
                       {avpuOptions.map(opt => (
-                        <AVPUButton 
-                          key={opt.status} 
-                          opt={opt} 
+                        <AVPUButton
+                          key={opt.status}
+                          opt={opt}
                           isSelected={patientStatus === opt.status}
                           onPress={() => setPatientStatus(opt.status)}
                         />
@@ -835,11 +949,11 @@ const CreateReport = () => {
           {incidentType === 'Others' && (
             <>
               <ScaledText baseSize={14} className="mb-1 text-gray-600">Please specify incident type</ScaledText>
-              <TextInput 
-                placeholder="Enter incident type..." 
-                value={othersSpecification} 
-                onChangeText={setOthersSpecification} 
-                className={`border rounded-xl px-4 py-4 text-base border-gray-300 bg-white text-black mb-4`} 
+              <TextInput
+                placeholder="Enter incident type..."
+                value={othersSpecification}
+                onChangeText={setOthersSpecification}
+                className={`border rounded-xl px-4 py-4 text-base border-gray-300 bg-white text-black mb-4`}
                 placeholderTextColor="#8E8E93"
               />
             </>
@@ -856,9 +970,9 @@ const CreateReport = () => {
                         <ActivityIndicator size="small" color="#4A90E2" />
                       </View>
                     ) : (
-                      <Image 
-                        source={{ uri: m.uri }} 
-                        className="w-full h-full" 
+                      <Image
+                        source={{ uri: m.uri }}
+                        className="w-full h-full"
                         resizeMode="cover"
                         fadeDuration={200}
                       />
@@ -877,8 +991,8 @@ const CreateReport = () => {
                 </View>
               ))}
             </View>
-            <TouchableOpacity 
-              onPress={() => setMediaModalVisible(true)} 
+            <TouchableOpacity
+              onPress={() => setMediaModalVisible(true)}
               disabled={isOptimizingImages}
               className={`self-start px-6 py-3 rounded-lg ${isOptimizingImages ? 'bg-gray-200' : 'bg-gray-100'}`}
             >
@@ -893,7 +1007,7 @@ const CreateReport = () => {
             </TouchableOpacity>
           </View>
 
-          <View 
+          <View
             onLayout={(event) => {
               // Store description field position for scrolling
               const { y } = event.nativeEvent.layout;
@@ -901,14 +1015,14 @@ const CreateReport = () => {
             }}
           >
             <ScaledText baseSize={14} className="mb-1 text-gray-600">Description</ScaledText>
-            <TextInput 
+            <TextInput
               ref={descriptionInputRef}
-              placeholder="Describe the incident..." 
-              value={description} 
-              onChangeText={setDescription} 
-              className={`border rounded-xl px-4 py-4 text-lg border-gray-300 bg-white text-black`} 
-              placeholderTextColor="#8E8E93" 
-              multiline 
+              placeholder="Describe the incident..."
+              value={description}
+              onChangeText={setDescription}
+              className={`border rounded-xl px-4 py-4 text-lg border-gray-300 bg-white text-black`}
+              placeholderTextColor="#8E8E93"
+              multiline
               textAlignVertical="top"
               style={{ minHeight: 120 }}
               onFocus={() => {
@@ -916,10 +1030,10 @@ const CreateReport = () => {
                 // Use multiple attempts with increasing delays to ensure it works
                 const scrollToDescription = () => {
                   if (!scrollViewRef.current) return;
-                  
+
                   // Method 1: Scroll to end (most reliable)
                   scrollViewRef.current.scrollToEnd({ animated: true });
-                  
+
                   // Method 2: If we have position, try scrollTo as well
                   if (descriptionYPosition.current > 0) {
                     setTimeout(() => {
@@ -932,16 +1046,16 @@ const CreateReport = () => {
                     }, 100);
                   }
                 };
-                
+
                 // Try immediately
                 scrollToDescription();
-                
+
                 // Try after short delay (keyboard animation start)
                 setTimeout(scrollToDescription, 200);
-                
+
                 // Try after longer delay (keyboard fully shown)
                 setTimeout(scrollToDescription, 500);
-                
+
                 // Final attempt
                 setTimeout(scrollToDescription, 800);
               }}
@@ -962,12 +1076,11 @@ const CreateReport = () => {
           <TouchableOpacity onPress={handleSaveDraft} disabled={isSubmitting} className={`flex-1 h-12 rounded-xl items-center justify-center ${isSubmitting ? 'bg-gray-400' : 'bg-gray-600'}`}>
             <ScaledText baseSize={16} className="text-white font-semibold">{isSubmitting ? 'Saving...' : 'Save Draft'}</ScaledText>
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             disabled={isSubmitting}
-            onPress={handleSave} 
-            className={`flex-1 h-12 rounded-xl items-center justify-center ${
-              isSubmitting ? 'bg-gray-400' : 'bg-[#4A90E2]'
-            }`}
+            onPress={handleSave}
+            className={`flex-1 h-12 rounded-xl items-center justify-center ${isSubmitting ? 'bg-gray-400' : 'bg-[#4A90E2]'
+              }`}
           >
             <ScaledText baseSize={16} className="text-white font-semibold">
               {isSubmitting ? 'Submitting...' : 'Submit'}
@@ -979,7 +1092,7 @@ const CreateReport = () => {
       {showLocationPicker && (
         <LocationPicker visible={true} onClose={() => setShowLocationPicker(false)} onLocationSelect={handleLocationSelect} initialLocation={selectedLocation || undefined} />
       )}
-      
+
       {showContactModal && (
         <Modal
           visible={true}
@@ -1069,7 +1182,7 @@ const CreateReport = () => {
           </View>
         </Modal>
       )}
-      
+
       {/* Media Source Selection Modal */}
       {mediaModalVisible && (
         <Modal
@@ -1114,7 +1227,7 @@ const CreateReport = () => {
           </View>
         </Modal>
       )}
-      
+
       {/* Submit Confirmation Modal */}
       {showConfirmSubmit && (
         <Modal visible={true} transparent={true} animationType="fade" onRequestClose={() => setShowConfirmSubmit(false)}>

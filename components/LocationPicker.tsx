@@ -54,7 +54,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
     setModalIconColor(color)
     setModalVisible(true)
   }
-  
+
   const getCurrentLocation = useCallback(async (isInitialLoad = false) => {
     try {
       if (isInitialLoad) {
@@ -101,8 +101,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
         timeInterval: 5000,
         distanceInterval: 0,
       })
-      
-      const timeoutPromise = new Promise((_, reject) => 
+
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Location timeout')), 10000)
       )
 
@@ -165,26 +165,30 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
       const { latitude, longitude } = markerPosition
       const js = `try { if (typeof map !== 'undefined') { map.setView([${latitude}, ${longitude}], 16); if (typeof marker !== 'undefined' && marker) { marker.setLatLng([${latitude}, ${longitude}]); } else { marker = L.marker([${latitude}, ${longitude}]).addTo(map); } } } catch (e) {}`
       webViewRef.current.injectJavaScript(js)
-    } catch {}
+    } catch { }
   }, [markerPosition])
 
-  const handleMessage = useCallback((event: WebViewMessageEvent) => {
-    try {
-      const message = JSON.parse(event.nativeEvent.data)
+  const handleMessage = useCallback(
+    (event: WebViewMessageEvent) => {
+      try {
+        const message = JSON.parse(event.nativeEvent.data)
 
-      if (message?.event === 'onMapClicked') {
-        userHasInteracted.current = true // User has manually selected a location
-        const { lat, lng } = message.payload?.touchLatLng || {}
-        if (lat && lng) {
-          const newLocation = { latitude: lat, longitude: lng }
-          setMarkerPosition(newLocation)
-          setSelectedLocation(newLocation)
+        if (message?.event === 'onMapClicked') {
+          userHasInteracted.current = true // User has manually selected a location
+          const { lat, lng } = message.payload?.touchLatLng || {}
+          if (lat && lng) {
+            const newLocation = { latitude: lat, longitude: lng }
+            setMarkerPosition(newLocation)
+            setSelectedLocation(newLocation)
+            // Reverse geocode will be called via useEffect below
+          }
         }
+      } catch (error) {
+        console.warn('Invalid message from WebView:', error)
       }
-    } catch (error) {
-      console.warn('Invalid message from WebView:', error)
-    }
-  }, [])
+    },
+    [],
+  )
 
   const getAddressFromCache = useCallback((lat: number, lng: number) => {
     const key = `${lat.toFixed(4)},${lng.toFixed(4)}`
@@ -195,6 +199,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
     const key = `${lat.toFixed(4)},${lng.toFixed(4)}`
     setAddressCache(prev => new Map(prev).set(key, address))
   }, [])
+
+
+
 
   const handleConfirm = async () => {
     if (!selectedLocation) {
@@ -210,8 +217,11 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
         onClose()
         return
       }
+
       const address = await Location.reverseGeocodeAsync(selectedLocation)
-      const addressString = address[0] ? `${address[0].street || ''} ${address[0].city || ''} ${address[0].region || ''}`.trim() : 'Selected Location'
+      const addressString = address[0]
+        ? `${address[0].street || ''} ${address[0].city || ''} ${address[0].region || ''}`.trim() || 'Selected Location'
+        : 'Selected Location'
       setAddressInCache(selectedLocation.latitude, selectedLocation.longitude, addressString)
       onLocationSelect({ ...selectedLocation, address: addressString })
       onClose()
@@ -252,7 +262,10 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
   <body>
     <div id="map"></div>
     <script>
-      const map = L.map('map', { zoomControl: false }).setView([${initialLat}, ${initialLng}], 15);
+      const map = L.map('map', { 
+        zoomControl: false,
+        minZoom: 3
+      }).setView([${initialLat}, ${initialLng}], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
       }).addTo(map);
@@ -280,9 +293,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
       <View className="flex-1 bg-white">
         {/* Modern translucent header with title and close button */}
-        <View 
-          className="border-b border-transparent" 
-          style={{ 
+        <View
+          className="border-b border-transparent"
+          style={{
             paddingTop: 15,
             paddingBottom: 15,
             paddingHorizontal: spacing,
@@ -291,8 +304,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
           }}
         >
           <View className="flex-row items-center justify-between ">
-            <TouchableOpacity 
-              onPress={onClose} 
+            <TouchableOpacity
+              onPress={onClose}
               className="items-center justify-center flex-shrink-0 "
               style={{
                 width: isSmallScreen ? 36 : 40,
@@ -308,9 +321,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
             >
               <Ionicons name="close" size={isSmallScreen ? 18 : 20} color="#111827" />
             </TouchableOpacity>
-            
+
             <View className="flex-1 items-center mx-1">
-              <Text 
+              <Text
                 className="font-bold text-gray-900"
                 style={{ fontSize: isSmallScreen ? 16 : isTablet ? 24 : 20 }}
                 numberOfLines={1}
@@ -318,7 +331,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
                 Select Location
               </Text>
             </View>
-            
+
             <View style={{ width: isSmallScreen ? 36 : 40 }} />
           </View>
         </View>
@@ -341,11 +354,11 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
           />
 
           {/* Floating controls overlay */}
-          <View 
+          <View
             className="absolute inset-0"
-            style={{ 
+            style={{
               pointerEvents: 'box-none',
-              zIndex: 9998 
+              zIndex: 9998
             }}
           >
 
@@ -445,9 +458,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
         </TouchableOpacity>
 
         {/* Footer with Confirm button and tips - stacked at bottom over map */}
-        <View 
+        <View
           className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200"
-          style={{ 
+          style={{
             paddingTop: footerPaddingTop,
             paddingHorizontal: spacing,
             paddingBottom: footerPaddingBottom,
@@ -457,28 +470,28 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ visible, onClose, onLoc
             setFooterHeight(height)
           }}
         >
-            {/* Confirm button */}
-            <TouchableOpacity 
-              onPress={handleConfirm} 
-              disabled={isLoading || !selectedLocation}
-              className="w-full items-center justify-center rounded-xl shadow-lg mb-2"
-              style={{
-                paddingVertical: isSmallScreen ? 12 : 14,
-                backgroundColor: selectedLocation && !isLoading ? '#2563EB' : '#D1D5DB',
-                borderRadius: 999,
-                shadowColor: selectedLocation ? '#2563EB' : '#000',
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: selectedLocation ? 0.28 : 0.08,
-                shadowRadius: 10,
-                elevation: selectedLocation ? 8 : 2,
-              }}
-            >
+          {/* Confirm button */}
+          <TouchableOpacity
+            onPress={handleConfirm}
+            disabled={isLoading || !selectedLocation}
+            className="w-full items-center justify-center rounded-xl shadow-lg mb-2"
+            style={{
+              paddingVertical: isSmallScreen ? 12 : 14,
+              backgroundColor: selectedLocation && !isLoading ? '#2563EB' : '#D1D5DB',
+              borderRadius: 999,
+              shadowColor: selectedLocation ? '#2563EB' : '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: selectedLocation ? 0.28 : 0.08,
+              shadowRadius: 10,
+              elevation: selectedLocation ? 8 : 2,
+            }}
+          >
             {isLoading ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text 
+              <Text
                 className="font-bold text-lg"
-                style={{ 
+                style={{
                   color: selectedLocation ? '#FFFFFF' : '#9CA3AF',
                 }}
               >
